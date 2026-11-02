@@ -201,6 +201,12 @@ app.get('/api/reports/fees',auth,allow('admin','accountant'),(req,res)=>{
   res.json({total,byStatus:rows});
 });
 
+// Serve the frontend from the same origin as the API so login works without CORS setup.
+const publicRoot = path.resolve(__dirname, '..');
+app.get('/', (req,res) => res.sendFile(path.join(publicRoot, 'index.html')));
+app.get('/login.html', (req,res) => res.sendFile(path.join(publicRoot, 'login.html')));
+app.use('/src', express.static(path.join(publicRoot, 'src'), { dotfiles: 'deny', index: false }));
+
 app.use('/api',(req,res)=>fail(res,404,'API endpoint not found'));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:process.env.NODE_ENV==='production'?'Internal server error':err.message});});
 
