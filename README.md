@@ -1,31 +1,57 @@
 # School Management System
 
-A starter project for a single-school management system. School identity and academic settings are editable in the Admin Settings screen and saved in the browser for this prototype.
+A Bengali-first school-management starter project with a responsive browser UI and a Node.js REST API.
 
-## Current prototype
-- Dashboard overview
-- Student list with add-student form
-- Admin settings: school name, logo URL, address, phone, email, academic year
-- Responsive layout
-- Browser localStorage persistence for demo data
+## Included in this repository
 
-## Important
-This is a **frontend prototype**, not a production-ready school information system. It does not yet include server-side authentication, a database, role permissions, SMS/email integration, payment processing, or secure student records.
+### Browser prototype
+- Bengali dashboard and responsive layout
+- Student list and add-student form
+- Admin-editable school name, logo URL, address, phone, email and academic year
+- Demo UI data saved in the current browser's localStorage
 
-## Run locally
-Open `index.html` in a modern browser. No build step is required.
+### API backend (starter)
+- JWT login and current-user endpoint
+- Password hashing with bcrypt
+- Roles: admin, teacher, student, guardian, accountant
+- Admin-managed school settings
+- Students and staff endpoints
+- Bulk attendance, homework, exams and marks/results
+- Fee creation and payment recording
+- Notices and dashboard totals
+- SQLite schema, indexes and foreign-key constraints
+- Basic security middleware, login rate limit and environment configuration
 
-## Suggested production architecture
-- Frontend: React / Next.js
-- Backend API: Laravel or Node.js
-- Database: MySQL or PostgreSQL
-- Authentication: server-side sessions and role-based access control
-- Deploy: HTTPS-enabled server with automated backups
+## Run the API locally
 
-## Next implementation milestones
-1. API, database schema and migrations
-2. Secure login and role permissions (Admin, Teacher, Student, Guardian, Accountant)
-3. Attendance, timetable, homework, exams and results
-4. Fees, receipts and accounting
-5. Library, inventory, notices and SMS/email providers
-6. Tests, audit logs, backups and deployment configuration
+Requires Node.js 20+ and npm. From the repository root:
+
+1. Copy `.env.example` to `.env`.
+2. Set a unique random `JWT_SECRET` of at least 32 characters.
+3. Set a strong `ADMIN_PASSWORD` of at least 12 characters and change `ADMIN_EMAIL`.
+4. Install dependencies with `npm install`.
+5. Start with `npm start`.
+6. Open `http://localhost:3000/api/health` to verify the service.
+
+The first start creates the SQLite database under `data/` and bootstraps an admin using the values in `.env` if that email does not already exist. Never commit `.env`, real student data, passwords, tokens or production database files.
+
+## API overview
+
+- `POST /api/auth/login` — login with email and password
+- `GET /api/auth/me` — current account
+- `GET/PUT /api/settings` — read/update school settings (update is admin-only)
+- `GET /api/dashboard` — overview counts
+- `GET/POST/PATCH /api/students` — student records
+- `GET/POST /api/staff` — staff records
+- `GET /api/attendance`, `POST /api/attendance/bulk`
+- `GET/POST /api/homework`
+- `GET/POST /api/exams`, `POST /api/results`, `GET /api/results`
+- `GET/POST /api/fees`, `POST /api/fees/:id/payment`
+- `GET/POST /api/notices`
+- `POST /api/users` — admin creates role-based accounts
+
+Protected endpoints require `Authorization: Bearer <token>`. Send JSON bodies with `Content-Type: application/json`.
+
+## Important status and limitations
+
+This is an **early-stage starter, not a complete production-ready school system**. The existing browser UI is not yet connected to the API; the API needs automated tests and deployment verification. Some role-specific data filtering, student/guardian self-service, full CRUD screens, receipt/ledger reporting, GPA/grading rules, library, inventory, timetable, email/SMS provider integration, backups, audit logging and production deployment remain to be implemented and tested. Review the code and security configuration before using real student information. Use HTTPS and backups in any deployment.
