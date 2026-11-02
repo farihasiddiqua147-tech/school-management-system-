@@ -92,6 +92,61 @@ CREATE TABLE IF NOT EXISTS notices (
  created_by INTEGER REFERENCES users(id),
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS timetable (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ class_name TEXT NOT NULL,
+ weekday TEXT NOT NULL,
+ period INTEGER NOT NULL CHECK(period > 0),
+ subject TEXT NOT NULL,
+ teacher_id INTEGER REFERENCES staff(id),
+ starts_at TEXT,
+ ends_at TEXT,
+ room TEXT,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE(class_name,weekday,period)
+);
+CREATE TABLE IF NOT EXISTS library_books (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ isbn TEXT UNIQUE,
+ title TEXT NOT NULL,
+ author TEXT,
+ category TEXT,
+ copies_total INTEGER NOT NULL DEFAULT 1 CHECK(copies_total >= 0),
+ copies_available INTEGER NOT NULL DEFAULT 1 CHECK(copies_available >= 0 AND copies_available <= copies_total),
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS library_loans (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ book_id INTEGER NOT NULL REFERENCES library_books(id),
+ student_id INTEGER NOT NULL REFERENCES students(id),
+ issued_on TEXT NOT NULL,
+ due_on TEXT NOT NULL,
+ returned_on TEXT,
+ issued_by INTEGER REFERENCES users(id),
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS inventory_items (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ item_name TEXT NOT NULL,
+ category TEXT,
+ quantity REAL NOT NULL DEFAULT 0 CHECK(quantity >= 0),
+ unit TEXT NOT NULL DEFAULT 'piece',
+ notes TEXT,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS audit_logs (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ actor_user_id INTEGER REFERENCES users(id),
+ action TEXT NOT NULL,
+ entity_type TEXT NOT NULL,
+ entity_id TEXT,
+ details TEXT,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_loans_student ON library_loans(student_id,returned_on);
+CREATE INDEX IF NOT EXISTS idx_timetable_class ON timetable(class_name,weekday);
+
 CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_name);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date);
 CREATE INDEX IF NOT EXISTS idx_results_exam ON results(exam_id, student_id);
