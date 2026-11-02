@@ -163,6 +163,44 @@ app.post('/api/notices',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const x=db.prepare('INSERT INTO notices(title,body,audience,published,created_by) VALUES(?,?,?,?,?)').run(b.title,b.body,b.audience||'all',b.published===false?0:1,req.user.id);
  res.status(201).json({notice:db.prepare('SELECT * FROM notices WHERE id=?').get(x.lastInsertRowid)});
 });
+
+function gradePoint(percent) {
+  if (percent >= 80) return {letter:'A+',point:5.00};
+  if (percent >= 70) return {letter:'A',point:4.00};
+  if (percent >= 60) return {letter:'A-',point:3.50};
+  if (percent >= 50) return {letter:'B',point:3.00};
+  if (percent >= 40) return {letter:'C',point:2.00};
+  if (percent >= 33) return {letter:'D',point:1.00};
+  return {letter:'F',point:0.00};
+}
+app.get('/api/reports/marksheet',auth,allow('admin','teacher','student','guardian'),(req,res)=>{
+  const examId=parseId(req.query.exam_id), studentId=parseId(req.query.student_id);
+  if(!examId||!studentId)return fail(res,400,'exam_id and student_id are required');
+  if(req.user.role==='student') {
+    const linked=db.prepare('SELECT id FROM students WHERE id=? AND name=?').get(studentId,req.user.name);
+    if(!linked)return fail(res,403,'You may only view your own marksheet');
+  }
+  if(req.user.role==='guardian') {
+    const linked=db.prepare('SELECT id FROM students WHERE id=? AND guardian_user_id=?').get(studentId,req.user.id);
+    if(!linked)return fail(res,403,'You may only view your linked student marksheet');
+  }
+  const student=db.prepare('SELECT id,name,class_name,roll,student_code FROM students WHERE id=?').get(studentId);
+  const exam=db.prepare('SELECT id,name,class_name,exam_date,academic_year FROM exams WHERE id=?').get(examId);
+  if(!student||!exam)return fail(res,404,'Student or exam not found');
+  const subjects=db.prepare('SELECT subject,marks,max_marks FROM results WHERE exam_id=? AND student_id=? ORDER BY subject').all(examId,studentId);
+  if(!subjects.length)return res.json({student,exam,subjects:[],totalMarks:0,totalMaxMarks:0,percentage:0,gpa:0,grade:'N/A'});
+  const enriched=subjects.map(s=>({...s,percentage:Number((s.marks/s.max_marks*100).toFixed(2)),...gradePoint(s.marks/s.max_marks*100)}));
+  const totalMarks=subjects.reduce((n,s)=>n+s.marks,0),totalMaxMarks=subjects.reduce((n,s)=>n+s.max_marks,0);
+  const percentage=Number((totalMarks/totalMaxMarks*100).toFixed(2));
+  const gpa=Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
+  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:gradePoint(percentage).letter});
+});
+app.get('/api/reports/fees',auth,allow('admin','accountant'),(req,res)=>{
+  const rows=db.prepare("SELECT status,COUNT(*) AS invoices,COALESCE(SUM(amount),0) AS billed,COALESCE(SUM(paid_amount),0) AS collected,COALESCE(SUM(amount-paid_amount),0) AS outstanding FROM fees GROUP BY status").all();
+  const total=db.prepare('SELECT COUNT(*) AS invoices,COALESCE(SUM(amount),0) AS billed,COALESCE(SUM(paid_amount),0) AS collected,COALESCE(SUM(amount-paid_amount),0) AS outstanding FROM fees').get();
+  res.json({total,byStatus:rows});
+});
+
 app.use('/api',(req,res)=>fail(res,404,'API endpoint not found'));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:process.env.NODE_ENV==='production'?'Internal server error':err.message});});
 
