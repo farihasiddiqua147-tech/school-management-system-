@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>School Management System</title>
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark" id="brandMark">S</div><div><strong id="sidebarSchoolName">School Manager</strong><small>Management Portal</small></div></div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">▦ <span>ড্যাশবোর্ড</span></button>
+        <button class="nav-item" data-view="students">♙ <span>শিক্ষার্থী</span></button>
+        <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
+      </nav>
+      <div class="sidebar-note"><strong>প্রোটোটাইপ</strong><p>ডেমো ডেটা এই ব্রাউজারেই সংরক্ষিত হয়।</p></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><p class="eyebrow">SCHOOL MANAGEMENT</p><h1 id="pageTitle">ড্যাশবোর্ড</h1></div><div class="admin-chip"><span class="avatar">A</span><span><b>Admin</b><small>Administrator</small></span></div></header>
+      <section id="dashboardView" class="view">
+        <div class="welcome"><div><p class="eyebrow light">স্বাগতম</p><h2 id="welcomeName">School Manager</h2><p>আপনার স্কুলের কার্যক্রম এক জায়গা থেকে পরিচালনা করুন।</p></div><div class="welcome-icon">▦</div></div>
+        <div class="stats">
+          <article class="stat-card"><span class="stat-icon teal">♙</span><p>মোট শিক্ষার্থী</p><strong id="studentCount">0</strong><small>শিক্ষার্থী তালিকা অনুযায়ী</small></article>
+          <article class="stat-card"><span class="stat-icon blue">▤</span><p>শিক্ষাবর্ষ</p><strong id="yearCount">2026</strong><small>বর্তমান সেটিংস</small></article>
+          <article class="stat-card"><span class="stat-icon amber">⚙</span><p>স্কুল প্রোফাইল</p><strong id="profileStatus">সম্পূর্ণ করুন</strong><small>অ্যাডমিন সেটিংস থেকে</small></article>
+        </div>
+        <div class="panel"><div class="panel-head"><div><h3>দ্রুত কাজ</h3><p>প্রায়শই ব্যবহৃত অপশন</p></div></div><div class="quick-actions"><button class="quick-card" data-go="students"><span>＋</span><b>শিক্ষার্থী যোগ করুন</b><small>নতুন শিক্ষার্থীর তথ্য যোগ করুন</small></button><button class="quick-card" data-go="settings"><span>⚙</span><b>স্কুলের তথ্য সম্পাদনা</b><small>নাম, লোগো, ঠিকানা ও শিক্ষাবর্ষ</small></button></div></div>
+      </section>
+      <section id="studentsView" class="view hidden">
+        <div class="panel"><div class="panel-head"><div><h3>শিক্ষার্থী তালিকা</h3><p>শিক্ষার্থীদের প্রাথমিক তথ্য পরিচালনা করুন</p></div><button class="primary" id="showStudentForm">＋ শিক্ষার্থী যোগ করুন</button></div>
+          <form id="studentForm" class="form-grid hidden">
+            <label>শিক্ষার্থীর নাম<input required name="name" placeholder="পূর্ণ নাম" /></label>
+            <label>শ্রেণি<select name="className"><option>Class 1</option><option>Class 2</option><option>Class 3</option><option>Class 4</option><option>Class 5</option><option>Class 6</option><option>Class 7</option><option>Class 8</option><option>Class 9</option><option>Class 10</option></select></label>
+            <label>রোল নম্বর<input required name="roll" placeholder="যেমন: 101" /></label>
+            <label>অভিভাবকের ফোন<input name="phone" placeholder="01XXXXXXXXX" /></label>
+            <div class="form-actions"><button type="button" class="secondary" id="cancelStudent">বাতিল</button><button class="primary" type="submit">সংরক্ষণ করুন</button></div>
+          </form>
+          <div class="table-wrap"><table><thead><tr><th>নাম</th><th>শ্রেণি</th><th>রোল</th><th>অভিভাবকের ফোন</th></tr></thead><tbody id="studentRows"></tbody></table><p id="emptyStudents" class="empty">এখনও কোনো শিক্ষার্থী যোগ করা হয়নি।</p></div>
+        </div>
+      </section>
+      <section id="settingsView" class="view hidden">
+        <div class="panel"><div class="panel-head"><div><h3>স্কুল প্রোফাইল ও সেটিংস</h3><p>এই তথ্যগুলো পরে যেকোনো সময় পরিবর্তন করতে পারবেন</p></div><span class="pill">Admin</span></div>
+          <form id="settingsForm" class="form-grid settings-grid">
+            <label>স্কুলের নাম<input name="schoolName" required placeholder="আপনার স্কুলের নাম" /></label>
+            <label>লোগোর URL<input name="logoUrl" placeholder="https://example.com/logo.png" /></label>
+            <label class="full">ঠিকানা<textarea name="address" rows="2" placeholder="স্কুলের পূর্ণ ঠিকানা"></textarea></label>
+            <label>ফোন নম্বর<input name="phone" placeholder="01XXXXXXXXX" /></label>
+            <label>ইমেইল<input name="email" type="email" placeholder="school@example.com" /></label>
+            <label>বর্তমান শিক্ষাবর্ষ<input name="academicYear" required type="number" min="2000" max="2100" /></label>
+            <div class="form-actions"><button type="reset" class="secondary">রিসেট ফর্ম</button><button type="submit" class="primary">সেটিংস সংরক্ষণ</button></div>
+          </form>
+          <p class="notice">নোট: এই ডেমোতে সেটিংস আপনার বর্তমান ব্রাউজারে থাকে। বহু ব্যবহারকারীর জন্য চালু করতে ব্যাকএন্ড ও ডেটাবেস যুক্ত করতে হবে।</p>
+        </div>
+      </section>
+      <footer>School Management System · Starter Prototype</footer>
+    </main>
+  </div>
+  <div id="toast" role="status" class="toast hidden"></div>
+  <script src="src/app.js"></script>
+</body>
+</html>
