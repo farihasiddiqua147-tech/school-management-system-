@@ -4,8 +4,14 @@
   "private": true,
   "description": "School management system starter with a role-based REST API",
   "main": "server/index.js",
-  "scripts": { "start": "node server/index.js", "dev": "node --watch server/index.js" },
-  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.8.1",
