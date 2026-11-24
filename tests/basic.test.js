@@ -86,3 +86,33 @@ test('admin role is authorized to list students', () => {
     /app\.get\('\/api\/students',\s*auth,\s*allow\('admin','teacher','accountant','guardian'\)/
   );
 });
+
+
+test('teacher student access is limited to assigned classes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  const listRoute = source.slice(source.indexOf("app.get('/api/students'"), source.indexOf("app.post('/api/students'"));
+  assert.match(listRoute, /teacherClassNames\(req\.user\.id\)/);
+  const createRoute = source.slice(source.indexOf("app.post('/api/students'"), source.indexOf("app.post('/api/students/:id/deactivate'"));
+  assert.match(createRoute, /teacherCanAccessClass\(req\.user\.id,cls\)/);
+});
+
+test('student and guardian exam listings are class scoped', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  const route = source.slice(source.indexOf("app.get('/api/exams'"), source.indexOf("app.post('/api/exams'"));
+  assert.match(route, /req\.user\.role==='student'/);
+  assert.match(route, /req\.user\.role==='guardian'/);
+  assert.match(route, /teacherClassNames\(req\.user\.id\)/);
+});
+
+test('notices validate audience and only return notices for the signed-in role', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  const route = source.slice(source.indexOf("app.get('/api/notices'"), source.indexOf("function gradePoint"));
+  assert.match(route, /audienceForRole/);
+  assert.match(route, /Invalid notice audience/);
+});
