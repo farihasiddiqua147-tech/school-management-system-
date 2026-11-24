@@ -48,7 +48,12 @@
         </div>
       </section>
       <section id="studentPortalView" class="view hidden">
-        <div class="panel"><div class="panel-head"><div><h3>আমার তথ্য</h3><p>শুধু আপনার নিজের শিক্ষার্থী-তথ্য</p></div></div><div id="studentProfile"></div></div>
+        <div class="panel"><div class="panel-head"><div><h3>শিক্ষার্থী ড্যাশবোর্ড</h3><p>আপনার পড়াশোনা, উপস্থিতি ও ফি-এর সংক্ষিপ্ত চিত্র</p></div></div><div id="studentProfile"></div></div>
+        <div class="stats">
+          <article class="stat-card"><span class="stat-icon teal">✓</span><p>উপস্থিতি</p><strong id="studentAttendanceRate">—</strong><small>রেকর্ডকৃত দিনের ভিত্তিতে</small></article>
+          <article class="stat-card"><span class="stat-icon blue">৳</span><p>বকেয়া ফি</p><strong id="studentDueTotal">৳0</strong><small>পরিশোধ বাকি</small></article>
+          <article class="stat-card"><span class="stat-icon amber">★</span><p>ফলাফলের গড়</p><strong id="studentAverage">—</strong><small>প্রাপ্ত নম্বরের শতকরা হার</small></article>
+        </div>
         <div class="panel"><h3>আমার বেতন ও ফি</h3><div class="table-wrap"><table><thead><tr><th>বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th></tr></thead><tbody id="studentFeeRows"></tbody></table></div><p class="notice">বিকাশ অনলাইন পেমেন্ট এখনো চালু হয়নি। মার্চেন্ট API ও সার্ভার-সাইড পেমেন্ট যাচাই সম্পন্ন হলে এখানে নিরাপদ পেমেন্ট বাটন যুক্ত হবে।</p></div>
         <div class="panel"><h3>আমার ফলাফল</h3><div class="table-wrap"><table><thead><tr><th>পরীক্ষা</th><th>বিষয়</th><th>নম্বর</th><th>পূর্ণমান</th></tr></thead><tbody id="studentResultRows"></tbody></table></div></div>
         <div class="panel"><h3>উপস্থিতি</h3><div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>অবস্থা</th><th>নোট</th></tr></thead><tbody id="studentAttendanceRows"></tbody></table></div></div>
