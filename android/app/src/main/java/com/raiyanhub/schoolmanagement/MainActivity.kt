@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
         var token by remember { mutableStateOf(prefs.getString("token", null)) }
         var user by remember { mutableStateOf<JSONObject?>(null) }
         var dashboard by remember { mutableStateOf<JSONObject?>(null) }
+        var rolePanels by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
         var busy by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf<String?>(null) }
         var info by remember { mutableStateOf("আপনার স্কুলের অ্যাকাউন্ট দিয়ে লগইন করুন।") }
@@ -82,6 +83,7 @@ class MainActivity : ComponentActivity() {
                     val me = api("/api/auth/me", token = token)
                     user = me.optJSONObject("user")
                     dashboard = api("/api/dashboard", token = token)
+                    rolePanels = loadRolePanels(user?.optString("role").orEmpty(), token)
                     info = "সার্ভারের সঙ্গে সংযোগ সফল।"
                 } catch (e: Exception) {
                     error = e.message ?: "সংযোগ করা যায়নি"
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
                                     token = newToken
                                     user = result.optJSONObject("user")
                                     dashboard = api("/api/dashboard", token = newToken)
+                                    rolePanels = loadRolePanels(user?.optString("role").orEmpty(), newToken)
                                     info = "লগইন সফল হয়েছে।"
                                 } catch (e: Exception) { error = e.message ?: "লগইন করা যায়নি" }
                                 finally { busy = false }
@@ -127,12 +130,14 @@ class MainActivity : ComponentActivity() {
                         InfoCard("আপনার Role", user?.optString("role", "—") ?: "—")
                         InfoCard("অ্যাকাউন্ট", user?.optString("email", "—") ?: "—")
                         InfoCard("সংযোগ", info)
-                        Text("ড্যাশবোর্ড ডেটা", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("সারসংক্ষেপ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(dashboard?.toString(2) ?: "ডেটা লোড হচ্ছে...", style = MaterialTheme.typography.bodySmall)
-                        OutlinedButton(onClick = { refreshSession() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("রিফ্রেশ") }
+                        Text("আপনার প্যানেল", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        rolePanels.forEach { (label, value) -> InfoCard(label, value) }
+                        OutlinedButton(onClick = { refreshSession() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("সব তথ্য রিফ্রেশ") }
                         OutlinedButton(onClick = {
                             prefs.edit().remove("token").apply()
-                            token = null; user = null; dashboard = null; password = ""
+                            token = null; user = null; dashboard = null; rolePanels = emptyMap(); password = ""
                             error = null
                         }, modifier = Modifier.fillMaxWidth()) { Text("লগআউট") }
                     }
@@ -142,6 +147,51 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+
+    private suspend fun loadRolePanels(role: String, token: String?): Map<String, String> {
+        val endpoints = when (role.lowercase()) {
+            "admin" -> listOf(
+                "শিক্ষার্থী" to "/api/students?status=all",
+                "শিক্ষক ও কর্মী" to "/api/staff",
+                "ফি ও পেমেন্ট" to "/api/fees",
+                "নোটিশ" to "/api/notices",
+                "ফি রিপোর্ট" to "/api/reports/fees"
+            )
+            "teacher" -> listOf(
+                "আমার ক্লাস" to "/api/teacher/me",
+                "ক্লাস রুটিন" to "/api/teacher/timetable",
+                "হোমওয়ার্ক" to "/api/homework",
+                "পরীক্ষা" to "/api/exams",
+                "নোটিশ" to "/api/notices"
+            )
+            "student" -> listOf(
+                "আমার পড়াশোনা, উপস্থিতি, ফলাফল ও ফি" to "/api/student/me",
+                "নোটিশ" to "/api/notices"
+            )
+            "guardian" -> listOf(
+                "সন্তানের তথ্য" to "/api/students?status=all",
+                "উপস্থিতি" to "/api/attendance",
+                "ফলাফল" to "/api/results",
+                "নোটিশ" to "/api/notices"
+            )
+            "accountant" -> listOf(
+                "শিক্ষার্থী তালিকা" to "/api/students?status=all",
+                "ফি ও পেমেন্ট" to "/api/fees",
+                "আয় ও বকেয়া রিপোর্ট" to "/api/reports/fees"
+            )
+            else -> emptyList()
+        }
+        val result = linkedMapOf<String, String>()
+        for ((label, path) in endpoints) {
+            result[label] = try {
+                api(path, token = token).toString(2)
+            } catch (e: Exception) {
+                "এই তথ্য এখন পাওয়া যায়নি: ${e.message ?: "API error"}"
+            }
+        }
+        return result
     }
 
     @Composable
