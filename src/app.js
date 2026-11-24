@@ -55,9 +55,9 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',notices:'নোটিশ',reports:'মার্কশিট রিপোর্ট',settings:'অ্যাডমিন সেটিংস'})[view];
+  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',expenses:'আয়-ব্যয়',notices:'নোটিশ',reports:'মার্কশিট রিপোর্ট',settings:'অ্যাডমিন সেটিংস'})[view];
 }
-document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'notices') loadNotices(); if (btn.dataset.view === 'reports') loadReportOptions(); }));
+document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'expenses') loadExpenses(); if (btn.dataset.view === 'notices') loadNotices(); if (btn.dataset.view === 'reports') loadReportOptions(); }));
 document.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.go)));
 const logout = document.createElement('button');
 logout.className = 'secondary'; logout.textContent = 'লগআউট'; logout.style.marginLeft = '12px';
@@ -78,6 +78,8 @@ $('showStudentForm').classList.toggle('hidden', !studentManagementRole);
 document.querySelectorAll('.quick-card[data-go="students"]').forEach(el => el.classList.toggle('hidden', !studentManagementRole));
 document.querySelectorAll('.quick-card[data-go="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 document.querySelectorAll('[data-view="fees"]').forEach(el => el.classList.toggle('hidden', !financeRole));
+document.querySelectorAll('[data-view="expenses"]').forEach(el => el.classList.toggle('hidden', !financeRole));
+if (!financeRole) $('expensesView').classList.add('hidden');
 if (!financeRole) $('feesView').classList.add('hidden');
 
 const noticeCreatePanel = $('noticeCreatePanel');
@@ -255,6 +257,44 @@ $('feeForm').addEventListener('submit',async e=>{
   catch(error){toast(error.message);}
 });
 $('refreshFees').addEventListener('click',loadFees);
+
+function renderExpenses(rows) {
+  const body=$('expenseRows');body.replaceChildren();
+  $('emptyExpenses').classList.toggle('hidden',rows.length>0);
+  rows.forEach(expense=>{
+    const tr=document.createElement('tr');
+    [expense.expense_date,expense.category,expense.description,money(expense.amount),expense.reference||'—'].forEach(value=>{
+      const td=document.createElement('td');td.textContent=String(value??'—');tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+async function loadExpenses() {
+  if(!financeRole)return;
+  try {
+    const [expenseData,report]=await Promise.all([api('/api/expenses'),api('/api/reports/accounting')]);
+    renderExpenses(expenseData.expenses||[]);
+    $('accountingBilled').textContent=money(report.income?.billed||0);
+    $('accountingCollected').textContent=money(report.income?.collected||0);
+    $('accountingExpenses').textContent=money(report.expenses?.total||0);
+    $('accountingNet').textContent='নিট নগদ প্রবাহ: '+money(report.netCashFlow||0)+'. আদায়ের হিসাব শুধু fee payment ledger-এ রেকর্ড থাকা পেমেন্ট থেকে করা হয়েছে।';
+  } catch(error){toast(error.message);}
+}
+$('expenseForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!financeRole)return;
+  const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+  data.amount=Number(data.amount);
+  try {
+    await api('/api/expenses',{method:'POST',body:JSON.stringify(data)});
+    e.currentTarget.reset();
+    $('expenseForm').elements.expense_date.value=new Date().toISOString().slice(0,10);
+    toast('খরচ সংরক্ষণ হয়েছে');
+    await loadExpenses();
+  } catch(error){toast(error.message);}
+});
+$('refreshExpenses').addEventListener('click',loadExpenses);
+$('expenseForm').elements.expense_date.value=new Date().toISOString().slice(0,10);
 $('studentForm').addEventListener('submit', async e => {
   e.preventDefault();
   const data = new FormData(e.currentTarget);
