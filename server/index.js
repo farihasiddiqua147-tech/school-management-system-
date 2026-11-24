@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateStudentLogin } = require('./student-validation');
-const { validateExpenseInput } = require('./expense-validation');
+const { validateExpenseInput, isRealIsoDate } = require('./expense-validation');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -467,7 +467,8 @@ app.post('/api/payments/online',auth,validateBody,(req,res)=>{
 // Expense ledger: restricted to administrative finance roles.
 app.get('/api/expenses',auth,allow('admin','accountant'),(req,res)=>{
   const from=String(req.query.from||''),to=String(req.query.to||''),category=String(req.query.category||'');
-  if((from&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(from))||(to&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)))return fail(res,400,'Use YYYY-MM-DD for expense date filters');
+  if((from&&!isRealIsoDate(from))||(to&&!isRealIsoDate(to)))return fail(res,400,'Use valid YYYY-MM-DD dates for expense filters');
+  if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
   const where=[],args=[];
   if(from){where.push('expense_date>=?');args.push(from);}
   if(to){where.push('expense_date<=?');args.push(to);}
@@ -488,7 +489,8 @@ app.post('/api/expenses',auth,allow('admin','accountant'),validateBody,(req,res)
 });
 app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
   const from=String(req.query.from||''),to=String(req.query.to||'');
-  if((from&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(from))||(to&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)))return fail(res,400,'Use YYYY-MM-DD for report date filters');
+  if((from&&!isRealIsoDate(from))||(to&&!isRealIsoDate(to)))return fail(res,400,'Use valid YYYY-MM-DD dates for report filters');
+  if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
   if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
   const invoiceWhere=[],paymentWhere=[],expenseWhere=[],invoiceArgs=[],paymentArgs=[],expenseArgs=[];
   if(from){
