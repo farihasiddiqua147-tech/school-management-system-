@@ -9,6 +9,7 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { validateStudentLogin } = require('./student-validation');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -241,11 +242,12 @@ app.post('/api/students',auth,allow('admin','teacher'),validateBody,(req,res)=>{
   const b=req.body, name=String(b.name||'').trim(), cls=String(b.class_name||'').trim(), roll=String(b.roll||'').trim();
   const email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'');
   if(!name||!cls||!roll)return fail(res,400,'Student name, class and roll are required');
-  if((email||password) && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<12))return fail(res,400,'Student login needs a valid email and password of at least 12 characters');
+  const loginError=validateStudentLogin(email,password);
+  if(loginError)return fail(res,400,loginError);
   try {
     const create=db.transaction(()=>{
       let userId=null;
-      if(email){const u=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'student')").run(name,email,bcrypt.hashSync(password,12));userId=u.lastInsertRowid;}
+      const u=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'student')").run(name,email,bcrypt.hashSync(password,12));userId=u.lastInsertRowid;
       const x=db.prepare('INSERT INTO students(student_code,name,class_name,roll,guardian_name,guardian_phone,guardian_user_id,user_id) VALUES(?,?,?,?,?,?,?,?)').run(b.student_code||null,name,cls,roll,b.guardian_name||null,b.guardian_phone||null,b.guardian_user_id||null,userId);
       return db.prepare('SELECT id,student_code,name,class_name,roll,guardian_name,guardian_phone,status,user_id FROM students WHERE id=?').get(x.lastInsertRowid);
     });
