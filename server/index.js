@@ -53,6 +53,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_fee_payments_fee ON fee_payments(fee_id, created_at);
 `);
 db.exec(`
+  CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL CHECK(amount > 0),
+    expense_date TEXT NOT NULL DEFAULT (date('now')),
+    reference TEXT,
+    created_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date, id);
+`);
+db.exec(`
   CREATE TABLE IF NOT EXISTS payment_gateway_settings (
     provider TEXT PRIMARY KEY CHECK(provider IN ('bkash','nagad')),
     merchant_id TEXT NOT NULL DEFAULT '',
@@ -438,6 +451,38 @@ app.post('/api/payments/online',auth,validateBody,(req,res)=>{
  const provider=String(req.body.provider||'');
  if(!['bkash','nagad'].includes(provider))return fail(res,400,'Unsupported payment provider');
  return res.status(503).json({error:'Online payment gateway is not configured yet. Please use the school office payment option for now.'});
+});
+// Expense ledger: restricted to administrative finance roles.
+app.get('/api/expenses',auth,allow('admin','accountant'),(req,res)=>{
+  const from=String(req.query.from||''),to=String(req.query.to||''),category=String(req.query.category||'');
+  if((from&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(from))||(to&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)))return fail(res,400,'Use YYYY-MM-DD for expense date filters');
+  const where=[],args=[];
+  if(from){where.push('expense_date>=?');args.push(from);}
+  if(to){where.push('expense_date<=?');args.push(to);}
+  if(category){where.push('category=?');args.push(category.slice(0,80));}
+  const sql='SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses'+(where.length?' WHERE '+where.join(' AND '):'')+' ORDER BY expense_date DESC,id DESC LIMIT 1000';
+  res.json({expenses:db.prepare(sql).all(...args)});
+});
+app.post('/api/expenses',auth,allow('admin','accountant'),validateBody,(req,res)=>{
+  const category=String(req.body.category||'').trim().slice(0,80);
+  const description=String(req.body.description||'').trim().slice(0,500);
+  const amount=Number(req.body.amount);
+  const expenseDate=String(req.body.expense_date||new Date().toISOString().slice(0,10));
+  const reference=String(req.body.reference||'').trim().slice(0,100)||null;
+  if(!category||!description||!Number.isFinite(amount)||amount<=0||!/^\\d{4}-\\d{2}-\\d{2}$/.test(expenseDate))return fail(res,400,'Category, description, positive amount and valid expense date are required');
+  const x=db.prepare('INSERT INTO expenses(category,description,amount,expense_date,reference,created_by) VALUES(?,?,?,?,?,?)').run(category,description,amount,expenseDate,reference,req.user.id);
+  res.status(201).json({expense:db.prepare('SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses WHERE id=?').get(x.lastInsertRowid)});
+});
+app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
+  const from=String(req.query.from||''),to=String(req.query.to||'');
+  if((from&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(from))||(to&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)))return fail(res,400,'Use YYYY-MM-DD for report date filters');
+  const feeWhere=[],expenseWhere=[],feeArgs=[],expenseArgs=[];
+  if(from){feeWhere.push('created_at>=?');feeArgs.push(from);expenseWhere.push('expense_date>=?');expenseArgs.push(from);}
+  if(to){feeWhere.push('created_at<?');feeArgs.push(to+'T23:59:59');expenseWhere.push('expense_date<=?');expenseArgs.push(to);}
+  const feeSql='SELECT COALESCE(SUM(amount),0) billed,COALESCE(SUM(paid_amount),0) collected,COALESCE(SUM(amount-paid_amount),0) outstanding FROM fees'+(feeWhere.length?' WHERE '+feeWhere.join(' AND '):'');
+  const expenseSql='SELECT COALESCE(SUM(amount),0) total,count(*) AS entries FROM expenses'+(expenseWhere.length?' WHERE '+expenseWhere.join(' AND '):'');
+  const income=db.prepare(feeSql).get(...feeArgs),expenses=db.prepare(expenseSql).get(...expenseArgs);
+  res.json({income,expenses:{total:expenses.total,entries:expenses.entries},netCashFlow:Number((income.collected-expenses.total).toFixed(2)),currency:'BDT',note:'Income uses fee invoices created in the selected period; collected is current paid_amount, not payment-date accounting. Use the payment ledger for audited cash accounting.'});
 });
 app.get('/api/notices',auth,(req,res)=>{
   const audienceForRole={admin:['all','admin'],teacher:['all','teacher'],student:['all','student'],guardian:['all','guardian'],accountant:['all','accountant']};
