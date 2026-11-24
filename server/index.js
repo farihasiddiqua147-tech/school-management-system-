@@ -19,6 +19,12 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
   console.error('Set JWT_SECRET to a random secret of at least 32 characters in .env');
   process.exit(1);
 }
+// Fail closed if a PostgreSQL URL is configured before the PostgreSQL adapter is implemented.
+// This prevents a misleading deployment where DATABASE_URL is set but SQLite is still used.
+if (process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is configured, but this application version still uses SQLite. PostgreSQL migration is not complete; refusing to start to avoid writing to the wrong database.');
+  process.exit(1);
+}
 const dbFile = path.resolve(process.env.DATABASE_FILE || './data/school.sqlite');
 fs.mkdirSync(path.dirname(dbFile), { recursive: true });
 const db = new Database(dbFile);
