@@ -39,8 +39,9 @@
             <label>শ্রেণি<select name="className"><option>Class 1</option><option>Class 2</option><option>Class 3</option><option>Class 4</option><option>Class 5</option><option>Class 6</option><option>Class 7</option><option>Class 8</option><option>Class 9</option><option>Class 10</option></select></label>
             <label>রোল নম্বর<input required name="roll" placeholder="যেমন: 101" /></label>
             <label>অভিভাবকের ফোন<input name="phone" placeholder="01XXXXXXXXX" /></label>
-            <label>শিক্ষার্থীর লগইন ইমেইল (ঐচ্ছিক)<input name="email" type="email" placeholder="student@example.com" /></label>
-            <label>লগইন পাসওয়ার্ড (ঐচ্ছিক, কমপক্ষে ১২ অক্ষর)<input name="password" type="password" minlength="12" autocomplete="new-password" /></label>
+            <label>শিক্ষার্থীর লগইন ইমেইল<input name="email" type="email" required placeholder="student@example.com" autocomplete="username" /></label>
+            <label>লগইন পাসওয়ার্ড<input name="password" type="password" required minlength="12" autocomplete="new-password" placeholder="কমপক্ষে ১২ অক্ষর" /></label>
+            <p class="notice">শিক্ষার্থীর লগইন অ্যাকাউন্ট তৈরি করতে ইমেইল ও পাসওয়ার্ড দুটোই দিতে হবে। পাসওয়ার্ড কমপক্ষে ১২ অক্ষরের হতে হবে।</p>
             <div class="form-actions"><button type="button" class="secondary" id="cancelStudent">বাতিল</button><button class="primary" type="submit">সংরক্ষণ করুন</button></div>
           </form>
           <div class="table-wrap"><table><thead><tr><th>নাম</th><th>শ্রেণি</th><th>রোল</th><th>অভিভাবকের ফোন</th><th>লগইন</th><th>অ্যাকশন</th></tr></thead><tbody id="studentRows"></tbody></table><p id="emptyStudents" class="empty">এখনও কোনো শিক্ষার্থী যোগ করা হয়নি।</p></div>
