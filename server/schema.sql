@@ -135,6 +135,18 @@ CREATE TABLE IF NOT EXISTS inventory_items (
  notes TEXT,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS expenses (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ category TEXT NOT NULL,
+ description TEXT NOT NULL,
+ amount REAL NOT NULL CHECK(amount > 0),
+ expense_date TEXT NOT NULL DEFAULT (date('now')),
+ reference TEXT,
+ created_by INTEGER REFERENCES users(id),
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date, id);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  actor_user_id INTEGER REFERENCES users(id),
