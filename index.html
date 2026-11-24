@@ -22,6 +22,7 @@
         <button class="nav-item hidden" data-view="studentPortal">▣ <span>আমার প্যানেল</span></button>
         <button class="nav-item hidden" data-view="teacherPortal">▤ <span>টিচার প্যানেল</span></button>
         <button class="nav-item" data-view="notices">▤ <span>নোটিশ</span></button>
+        <button class="nav-item hidden" data-view="reports">▧ <span>মার্কশিট রিপোর্ট</span></button>
         <button class="nav-item" data-view="fees">৳ <span>বেতন ও ফি</span></button>
         <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
       </nav>
@@ -74,6 +75,25 @@
         <div class="panel"><h3>হোমওয়ার্ক দিন</h3><form id="teacherHomeworkForm" class="form-grid"><label>বিষয়<input name="subject" required /></label><label>শিরোনাম<input name="title" required /></label><label class="full">বিস্তারিত<textarea name="description" rows="2"></textarea></label><label>জমার তারিখ<input name="due_date" type="date" /></label><div class="form-actions"><button class="primary" type="submit">হোমওয়ার্ক প্রকাশ</button></div></form></div>
         <div class="panel"><h3>পরীক্ষা ও নম্বর</h3><form id="teacherExamForm" class="form-grid"><label>পরীক্ষার নাম<input name="name" required /></label><label>পরীক্ষার তারিখ<input name="exam_date" type="date" /></label><div class="form-actions"><button class="primary" type="submit">পরীক্ষা তৈরি</button></div></form><form id="teacherMarksForm" class="form-grid"><label>পরীক্ষা<select name="exam_id" id="teacherExamSelect" required><option value="">পরীক্ষা নির্বাচন</option></select></label><label>শিক্ষার্থী<select name="student_id" id="teacherMarkStudent" required><option value="">শিক্ষার্থী নির্বাচন</option></select></label><label>বিষয়<input name="subject" required /></label><label>প্রাপ্ত নম্বর<input name="marks" type="number" min="0" step="0.01" required /></label><label>পূর্ণমান<input name="max_marks" type="number" min="1" step="0.01" value="100" required /></label><div class="form-actions"><button class="primary" type="submit">নম্বর সংরক্ষণ</button></div></form></div>
         <div class="panel"><h3>আমার ক্লাস রুটিন</h3><div class="table-wrap"><table><thead><tr><th>ক্লাস</th><th>দিন</th><th>পিরিয়ড</th><th>বিষয়</th><th>সময়</th><th>রুম</th></tr></thead><tbody id="teacherRoutineRows"></tbody></table></div></div>
+      </section>
+      <section id="reportsView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>পরীক্ষার মার্কশিট</h3><p>শিক্ষার্থী ও পরীক্ষা নির্বাচন করে নম্বর, গ্রেড ও GPA দেখুন</p></div></div>
+          <form id="reportForm" class="form-grid">
+            <label>পরীক্ষা<select id="reportExam" name="exam_id" required><option value="">পরীক্ষা নির্বাচন</option></select></label>
+            <label>শিক্ষার্থী<select id="reportStudent" name="student_id" required><option value="">শিক্ষার্থী নির্বাচন</option></select></label>
+            <div class="form-actions"><button class="primary" type="submit">মার্কশিট দেখুন</button></div>
+          </form>
+        </div>
+        <div class="panel hidden" id="reportResultPanel">
+          <h3 id="reportHeading">মার্কশিট</h3>
+          <div class="stats">
+            <article class="stat-card"><p>মোট নম্বর</p><strong id="reportTotal">—</strong></article>
+            <article class="stat-card"><p>শতকরা</p><strong id="reportPercentage">—</strong></article>
+            <article class="stat-card"><p>GPA / গ্রেড</p><strong id="reportGpa">—</strong></article>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>বিষয়</th><th>প্রাপ্ত নম্বর</th><th>পূর্ণমান</th><th>শতকরা</th><th>গ্রেড</th><th>গ্রেড পয়েন্ট</th></tr></thead><tbody id="reportSubjectRows"></tbody></table></div>
+        </div>
       </section>
       <section id="noticesView" class="view hidden">
         <div class="panel">
