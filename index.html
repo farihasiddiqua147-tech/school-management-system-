@@ -79,6 +79,27 @@
           </form>
           <p class="notice">নোট: এই ডেমোতে সেটিংস আপনার বর্তমান ব্রাউজারে থাকে। বহু ব্যবহারকারীর জন্য চালু করতে ব্যাকএন্ড ও ডেটাবেস যুক্ত করতে হবে।</p>
         </div>
+
+        <div class="panel">
+          <div class="panel-head"><div><h3>পেমেন্ট গেটওয়ে সেটিংস</h3><p>অ্যাডমিন পরে bKash ও Nagad মার্চেন্ট তথ্য যুক্ত বা পরিবর্তন করতে পারবেন</p></div><span class="pill">Admin only</span></div>
+          <form id="gatewayForm" class="form-grid settings-grid">
+            <label>পেমেন্ট মাধ্যম<select id="gatewayProvider" name="provider"><option value="bkash">bKash</option><option value="nagad">Nagad</option></select></label>
+            <label>Merchant ID<input name="merchantId" id="gatewayMerchantId" autocomplete="off" placeholder="Merchant ID" /></label>
+            <div id="bkashCredentialFields" class="form-grid full">
+              <label>App Key<input type="password" name="appKey" autocomplete="new-password" placeholder="নতুন App Key লিখুন" /></label>
+              <label>App Secret<input type="password" name="appSecret" autocomplete="new-password" placeholder="নতুন App Secret লিখুন" /></label>
+              <label>Username<input type="password" name="username" autocomplete="new-password" placeholder="API Username" /></label>
+              <label>Password<input type="password" name="password" autocomplete="new-password" placeholder="API Password" /></label>
+            </div>
+            <div id="nagadCredentialFields" class="form-grid full hidden">
+              <label>Merchant Private Key<textarea name="merchantPrivateKey" rows="3" autocomplete="new-password" placeholder="নতুন Merchant Private Key লিখুন"></textarea></label>
+              <label>PG Public Key<textarea name="pgPublicKey" rows="3" autocomplete="new-password" placeholder="নতুন PG Public Key লিখুন"></textarea></label>
+            </div>
+            <label class="full">কনফিগারেশন অবস্থা<select id="gatewayEnabled" name="enabled"><option value="false">বন্ধ রাখুন</option><option value="true">প্রস্তুত হিসেবে চিহ্নিত করুন</option></select></label>
+            <div class="form-actions"><button class="primary" type="submit">গেটওয়ে সেটিংস সংরক্ষণ</button></div>
+          </form>
+          <p id="gatewayStatus" class="notice">এখানে Merchant তথ্য নিরাপদভাবে সংরক্ষণ করা যাবে। তবে অফিসিয়াল API checkout ও payment callback যাচাই যুক্ত না হওয়া পর্যন্ত শিক্ষার্থীদের কাছ থেকে অনলাইন পেমেন্ট নেওয়া হবে না।</p>
+        </div>
       </section>
       <footer>School Management System · Starter Prototype</footer>
     </main>
