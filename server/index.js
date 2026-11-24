@@ -242,12 +242,14 @@ app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(r
   if(status!=='all'){sql+=' AND status=?';args.push(String(status));}
   if(q){sql+=' AND (name LIKE ? OR student_code LIKE ? OR roll LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%');}
   if(req.user.role==='guardian') { const guardian=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id); if(!guardian.length)return res.json({students:[]}); sql+=' AND id IN ('+guardian.map(()=>'?').join(',')+')';args.push(...guardian); }
-  res.json({students:db.prepare(sql+' ORDER BY class_name,roll LIMIT 500').all(...args)});
+  if(req.user.role==='teacher') { const classes=teacherClassNames(req.user.id); if(!classes.length)return res.json({students:[]}); sql+=' AND class_name IN ('+classes.map(()=>'?').join(',')+')';args.push(...classes); }
+  res.json({students:db.prepare(sql+' ORDER BY class_name,CAST(roll AS INTEGER),roll LIMIT 500').all(...args)});
 });
 app.post('/api/students',auth,allow('admin','teacher'),validateBody,(req,res)=>{
   const b=req.body, name=String(b.name||'').trim(), cls=String(b.class_name||'').trim(), roll=String(b.roll||'').trim();
   const email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'');
   if(!name||!cls||!roll)return fail(res,400,'Student name, class and roll are required');
+  if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,cls))return fail(res,403,'শুধু দায়িত্বপ্রাপ্ত ক্লাসে শিক্ষার্থী যোগ করা যাবে');
   const loginError=validateStudentLogin(email,password);
   if(loginError)return fail(res,400,loginError);
   try {
@@ -268,6 +270,8 @@ app.post('/api/students/:id/deactivate',auth,allow('admin'),(req,res)=>{
 });
 app.patch('/api/students/:id',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const id=parseId(req.params.id);if(!id)return fail(res,400,'Invalid id');
+ const current=db.prepare('SELECT id,class_name FROM students WHERE id=?').get(id);if(!current)return fail(res,404,'Student not found');
+ if(req.user.role==='teacher'&&(!teacherCanAccessClass(req.user.id,current.class_name)||(req.body.class_name!==undefined&&!teacherCanAccessClass(req.user.id,req.body.class_name))))return fail(res,403,'শুধু দায়িত্বপ্রাপ্ত ক্লাসের শিক্ষার্থী সম্পাদনা করা যাবে');
  const keys=['student_code','name','class_name','roll','guardian_name','guardian_phone','status']; const updates=keys.filter(k=>req.body[k]!==undefined);
  if(!updates.length)return fail(res,400,'No editable fields supplied');
  const stmt=db.prepare('UPDATE students SET '+updates.map(k=>k+'=?').join(',')+' WHERE id=?');
@@ -314,7 +318,24 @@ app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const x=db.prepare('INSERT INTO homework(class_name,subject,title,description,due_date,created_by) VALUES(?,?,?,?,?,?)').run(b.class_name,b.subject,b.title,b.description||null,b.due_date||null,req.user.id);
  res.status(201).json({homework:db.prepare('SELECT * FROM homework WHERE id=?').get(x.lastInsertRowid)});
 });
-app.get('/api/exams',auth,(req,res)=>res.json({exams:db.prepare('SELECT * FROM exams ORDER BY exam_date DESC LIMIT 300').all()}));
+app.get('/api/exams',auth,(req,res)=>{
+  let sql='SELECT * FROM exams',args=[],where=[];
+  if(req.user.role==='student'){
+    const st=db.prepare("SELECT class_name FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+    if(!st)return fail(res,404,'Student profile not linked');
+    where.push('class_name=?');args.push(st.class_name);
+  } else if(req.user.role==='guardian') {
+    const classes=db.prepare("SELECT DISTINCT class_name FROM students WHERE guardian_user_id=? AND status='active'").all(req.user.id).map(x=>x.class_name);
+    if(!classes.length)return res.json({exams:[]});
+    where.push('class_name IN ('+classes.map(()=>'?').join(',')+')');args.push(...classes);
+  } else if(req.user.role==='teacher') {
+    const classes=teacherClassNames(req.user.id);
+    if(!classes.length)return res.json({exams:[]});
+    where.push('class_name IN ('+classes.map(()=>'?').join(',')+')');args.push(...classes);
+  }
+  if(where.length)sql+=' WHERE '+where.join(' AND ');
+  res.json({exams:db.prepare(sql+' ORDER BY exam_date DESC LIMIT 300').all(...args)});
+ });
 app.post('/api/exams',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.name||!b.class_name)return fail(res,400,'Exam name and class required');
  if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,b.class_name))return fail(res,403,'এই ক্লাসটি আপনার দায়িত্বে বরাদ্দ নেই');
@@ -376,10 +397,16 @@ app.post('/api/payments/online',auth,validateBody,(req,res)=>{
  if(!['bkash','nagad'].includes(provider))return fail(res,400,'Unsupported payment provider');
  return res.status(503).json({error:'Online payment gateway is not configured yet. Please use the school office payment option for now.'});
 });
-app.get('/api/notices',auth,(req,res)=>res.json({notices:db.prepare('SELECT id,title,body,audience,published,created_at FROM notices WHERE published=1 ORDER BY created_at DESC LIMIT 300').all()}));
+app.get('/api/notices',auth,(req,res)=>{
+  const audienceForRole={admin:['all','admin'],teacher:['all','teacher'],student:['all','student'],guardian:['all','guardian'],accountant:['all','accountant']};
+  const allowed=audienceForRole[req.user.role]||['all'];
+  res.json({notices:db.prepare('SELECT id,title,body,audience,published,created_at FROM notices WHERE published=1 AND audience IN ('+allowed.map(()=>'?').join(',')+') ORDER BY created_at DESC LIMIT 300').all(...allowed)});
+ });
 app.post('/api/notices',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!String(b.title||'').trim()||!String(b.body||'').trim())return fail(res,400,'Notice title and body required');
- const x=db.prepare('INSERT INTO notices(title,body,audience,published,created_by) VALUES(?,?,?,?,?)').run(b.title,b.body,b.audience||'all',b.published===false?0:1,req.user.id);
+ const audience=String(b.audience||'all');
+ if(!['all','admin','teacher','student','guardian','accountant'].includes(audience))return fail(res,400,'Invalid notice audience');
+ const x=db.prepare('INSERT INTO notices(title,body,audience,published,created_by) VALUES(?,?,?,?,?)').run(String(b.title).trim().slice(0,200),String(b.body).trim().slice(0,10000),audience,b.published===false?0:1,req.user.id);
  res.status(201).json({notice:db.prepare('SELECT * FROM notices WHERE id=?').get(x.lastInsertRowid)});
 });
 
