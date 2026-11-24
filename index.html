@@ -24,6 +24,7 @@
         <button class="nav-item" data-view="notices">▤ <span>নোটিশ</span></button>
         <button class="nav-item hidden" data-view="reports">▧ <span>মার্কশিট রিপোর্ট</span></button>
         <button class="nav-item" data-view="fees">৳ <span>বেতন ও ফি</span></button>
+        <button class="nav-item hidden" data-view="expenses">↘ <span>আয়-ব্যয়</span></button>
         <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
       </nav>
       <div class="sidebar-note"><strong>সার্ভার সংযুক্ত</strong><p>অ্যাকাউন্ট ও অনুমতি অনুযায়ী ডেটা দেখানো হয়।</p></div>
@@ -132,6 +133,32 @@
           </div>
           <div class="table-wrap"><table><thead><tr><th>শিক্ষার্থী</th><th>ফি-এর বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th><th>কাজ</th></tr></thead><tbody id="feeRows"></tbody></table><p id="emptyFees" class="empty">এখনও কোনো ফি যোগ করা হয়নি।</p></div>
           <p class="notice">বিকাশ/নগদের সরাসরি অনলাইন পেমেন্ট চালু করতে মার্চেন্ট API ও নিরাপদ callback যাচাই যুক্ত করতে হবে। আপাতত এখানে অফিসে পাওয়া পেমেন্টের হিসাব ও রসিদ সংরক্ষণ করা যাবে।</p>
+        </div>
+      </section>
+      <section id="expensesView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>স্কুলের খরচ যোগ করুন</h3><p>অফিস খরচ, বিদ্যুৎ, বেতন ও অন্যান্য ব্যয় রেকর্ড করুন</p></div><span class="pill">BDT ৳</span></div>
+          <form id="expenseForm" class="form-grid">
+            <label>খরচের ধরন<input name="category" required maxlength="80" placeholder="যেমন: বিদ্যুৎ বিল" /></label>
+            <label>টাকার পরিমাণ (৳)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
+            <label class="full">বিবরণ<input name="description" required maxlength="500" placeholder="খরচের বিস্তারিত" /></label>
+            <label>খরচের তারিখ<input name="expense_date" type="date" required /></label>
+            <label>রেফারেন্স/ভাউচার নম্বর<input name="reference" maxlength="100" placeholder="ঐচ্ছিক" /></label>
+            <div class="form-actions"><button class="primary" type="submit">খরচ সংরক্ষণ করুন</button></div>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>আয়-ব্যয়ের সারাংশ</h3><p>নির্বাচিত সময়ের রেকর্ডকৃত লেনদেন</p></div><button class="secondary" id="refreshExpenses">রিফ্রেশ</button></div>
+          <div class="stats">
+            <article class="stat-card"><p>ধার্য ফি</p><strong id="accountingBilled">৳0</strong></article>
+            <article class="stat-card"><p>রেকর্ডকৃত আদায়</p><strong id="accountingCollected">৳0</strong></article>
+            <article class="stat-card"><p>মোট খরচ</p><strong id="accountingExpenses">৳0</strong></article>
+          </div>
+          <p class="notice" id="accountingNet">নিট নগদ প্রবাহ: ৳0। পুরোনো পেমেন্ট লেজারে না থাকলে তা আদায়ের হিসাবে ধরা হবে না।</p>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>খরচের তালিকা</h3><p>সর্বশেষ ১০০০টি খরচের রেকর্ড</p></div></div>
+          <div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>বিবরণ</th><th>পরিমাণ</th><th>রেফারেন্স</th></tr></thead><tbody id="expenseRows"></tbody></table><p id="emptyExpenses" class="empty">এখনও কোনো খরচ যোগ করা হয়নি।</p></div>
         </div>
       </section>
       <section id="settingsView" class="view hidden">
