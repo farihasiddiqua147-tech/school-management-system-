@@ -465,8 +465,9 @@ app.get('/api/reports/marksheet',auth,allow('admin','teacher','student','guardia
   const enriched=subjects.map(s=>({...s,percentage:Number((s.marks/s.max_marks*100).toFixed(2)),...gradePoint(s.marks/s.max_marks*100)}));
   const totalMarks=subjects.reduce((n,s)=>n+s.marks,0),totalMaxMarks=subjects.reduce((n,s)=>n+s.max_marks,0);
   const percentage=Number((totalMarks/totalMaxMarks*100).toFixed(2));
-  const gpa=Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
-  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:gradePoint(percentage).letter});
+  const failed=enriched.some(s=>s.letter==='F');
+  const gpa=failed?0:Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
+  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:failed?'F':gradePoint(percentage).letter});
 });
 app.get('/api/reports/fees',auth,allow('admin','accountant'),(req,res)=>{
   const rows=db.prepare("SELECT status,COUNT(*) AS invoices,COALESCE(SUM(amount),0) AS billed,COALESCE(SUM(paid_amount),0) AS collected,COALESCE(SUM(amount-paid_amount),0) AS outstanding FROM fees GROUP BY status").all();
