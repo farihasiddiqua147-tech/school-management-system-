@@ -62,6 +62,48 @@ document.querySelectorAll('[data-view="settings"]').forEach(el => el.classList.t
 const financeRole = ['admin','accountant'].includes(user.role);
 document.querySelectorAll('[data-view="fees"]').forEach(el => el.classList.toggle('hidden', !financeRole));
 if (!financeRole) $('feesView').classList.add('hidden');
+
+const gatewayForm = $('gatewayForm');
+let gatewayConfigs = {};
+function showGatewayProvider() {
+  const provider = $('gatewayProvider').value;
+  $('bkashCredentialFields').classList.toggle('hidden', provider !== 'bkash');
+  $('nagadCredentialFields').classList.toggle('hidden', provider !== 'nagad');
+  const config = gatewayConfigs[provider] || {};
+  $('gatewayMerchantId').value = config.merchantId || '';
+  $('gatewayEnabled').value = config.enabled ? 'true' : 'false';
+  gatewayForm.querySelectorAll('input[type="password"], textarea').forEach(field => { field.value = ''; });
+  const status = config.configured ? 'আগে প্রয়োজনীয় তথ্য সংরক্ষিত আছে। পরিবর্তন করতে নতুন তথ্য লিখুন।' : 'এখনও সব প্রয়োজনীয় Merchant তথ্য সংরক্ষণ করা হয়নি।';
+  $('gatewayStatus').textContent = status + ' নিরাপত্তার জন্য পুরোনো Secret আবার দেখানো হয় না।';
+}
+async function loadGatewaySettings() {
+  if (!adminOnly) return;
+  try {
+    const result = await api('/api/payment-gateways');
+    gatewayConfigs = result.gateways || {};
+    showGatewayProvider();
+  } catch (error) { $('gatewayStatus').textContent = error.message; }
+}
+$('gatewayProvider').addEventListener('change', showGatewayProvider);
+gatewayForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const provider = $('gatewayProvider').value;
+  const credentials = {};
+  gatewayFieldsForProvider(provider).forEach(key => {
+    const field = gatewayForm.elements[key];
+    if (field && field.value.trim()) credentials[key] = field.value;
+  });
+  const payload = {merchantId:$('gatewayMerchantId').value.trim(), enabled:$('gatewayEnabled').value === 'true', credentials};
+  try {
+    const result = await api('/api/payment-gateways/' + provider, {method:'PUT', body:JSON.stringify(payload)});
+    toast(result.message || 'গেটওয়ে সেটিংস সংরক্ষিত হয়েছে');
+    await loadGatewaySettings();
+  } catch (error) { toast(error.message); }
+});
+function gatewayFieldsForProvider(provider) {
+  return provider === 'bkash' ? ['appKey','appSecret','username','password'] : ['merchantPrivateKey','pgPublicKey'];
+}
+
 $('settingsForm').addEventListener('submit', async e => {
   e.preventDefault();
   try {
