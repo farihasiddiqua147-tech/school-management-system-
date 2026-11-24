@@ -55,9 +55,9 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',notices:'নোটিশ',settings:'অ্যাডমিন সেটিংস'})[view];
+  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',notices:'নোটিশ',reports:'মার্কশিট রিপোর্ট',settings:'অ্যাডমিন সেটিংস'})[view];
 }
-document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'notices') loadNotices(); }));
+document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'notices') loadNotices(); if (btn.dataset.view === 'reports') loadReportOptions(); }));
 document.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.go)));
 const logout = document.createElement('button');
 logout.className = 'secondary'; logout.textContent = 'লগআউট'; logout.style.marginLeft = '12px';
@@ -68,6 +68,7 @@ const studentOnly = user.role === 'student';
 const teacherOnly = user.role === 'teacher';
 document.querySelectorAll('[data-view="studentPortal"]').forEach(el=>el.classList.toggle('hidden',!studentOnly));
 document.querySelectorAll('[data-view="teacherPortal"]').forEach(el=>el.classList.toggle('hidden',!teacherOnly));
+document.querySelectorAll('[data-view="reports"]').forEach(el=>el.classList.toggle('hidden',!['admin','teacher'].includes(user.role)));
 document.querySelectorAll('[data-view="students"]').forEach(el=>el.classList.toggle('hidden',studentOnly));
 document.querySelectorAll('[data-view="dashboard"]').forEach(el=>el.classList.toggle('hidden',studentOnly||teacherOnly));
 document.querySelectorAll('[data-view="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
@@ -105,6 +106,38 @@ $('noticeForm').addEventListener('submit',async e=>{
   const data=Object.fromEntries(new FormData(e.currentTarget).entries());
   try { await api('/api/notices',{method:'POST',body:JSON.stringify(data)});e.currentTarget.reset();toast('নোটিশ প্রকাশ হয়েছে');await loadNotices(); }
   catch(error){toast(error.message);}
+});
+
+async function loadReportOptions() {
+  const examSelect=$('reportExam'), studentSelect=$('reportStudent');
+  examSelect.replaceChildren();studentSelect.replaceChildren();
+  const addOption=(select,value,label)=>{const o=document.createElement('option');o.value=value;o.textContent=label;select.appendChild(o);};
+  addOption(examSelect,'','পরীক্ষা নির্বাচন');addOption(studentSelect,'','শিক্ষার্থী নির্বাচন');
+  try {
+    const [examData,studentData]=await Promise.all([api('/api/exams'),api('/api/students?status=all')]);
+    (examData.exams||[]).forEach(exam=>addOption(examSelect,exam.id,exam.name+' · '+exam.class_name+' · '+(exam.exam_date||'তারিখ নেই')));
+    (studentData.students||[]).forEach(st=>addOption(studentSelect,st.id,st.name+' · '+st.class_name+' · রোল '+st.roll));
+  } catch(error){toast(error.message);}
+}
+$('reportForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const examId=$('reportExam').value,studentId=$('reportStudent').value;
+  if(!examId||!studentId){toast('পরীক্ষা ও শিক্ষার্থী নির্বাচন করুন');return;}
+  try {
+    const m=await api('/api/reports/marksheet?exam_id='+encodeURIComponent(examId)+'&student_id='+encodeURIComponent(studentId));
+    $('reportResultPanel').classList.remove('hidden');
+    $('reportHeading').textContent=m.student.name+' · '+m.exam.name+' · '+m.student.class_name+' · রোল '+m.student.roll;
+    $('reportTotal').textContent=Number(m.totalMarks||0)+' / '+Number(m.totalMaxMarks||0);
+    $('reportPercentage').textContent=Number(m.percentage||0)+'%';
+    $('reportGpa').textContent=Number(m.gpa||0).toFixed(2)+' / '+(m.grade||'—');
+    const body=$('reportSubjectRows');body.replaceChildren();
+    (m.subjects||[]).forEach(s=>{
+      const tr=document.createElement('tr');
+      [s.subject,s.marks,s.max_marks,Number(s.percentage||0)+'%',s.letter,Number(s.point||0).toFixed(2)].forEach(v=>{const td=document.createElement('td');td.textContent=String(v??'—');tr.appendChild(td);});
+      body.appendChild(tr);
+    });
+    if(!(m.subjects||[]).length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.textContent='এই পরীক্ষার কোনো নম্বর পাওয়া যায়নি।';tr.appendChild(td);body.appendChild(tr);}
+  } catch(error){toast(error.message);}
 });
 
 const gatewayForm = $('gatewayForm');
