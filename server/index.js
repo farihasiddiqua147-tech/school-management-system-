@@ -202,7 +202,7 @@ app.get('/api/dashboard',auth,(req,res)=>{
 });
 app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(req,res)=>{
   const {className,status='active',q=''}=req.query;
-  let sql='SELECT id,student_code,name,class_name,roll,guardian_name,guardian_phone,status,created_at FROM students WHERE 1=1', args=[];
+  let sql='SELECT id,student_code,name,class_name,roll,guardian_name,guardian_phone,status,created_at,user_id FROM students WHERE 1=1', args=[];
   if(className){sql+=' AND class_name=?';args.push(String(className));}
   if(status!=='all'){sql+=' AND status=?';args.push(String(status));}
   if(q){sql+=' AND (name LIKE ? OR student_code LIKE ? OR roll LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%');}
@@ -240,9 +240,19 @@ app.patch('/api/students/:id',auth,allow('admin','teacher'),validateBody,(req,re
 });
 app.get('/api/staff',auth,allow('admin','teacher'),(req,res)=>res.json({staff:db.prepare('SELECT id,user_id,name,designation,phone,joined_on,active FROM staff ORDER BY name LIMIT 500').all()}));
 app.post('/api/staff',auth,allow('admin'),validateBody,(req,res)=>{
- const b=req.body;if(!String(b.name||'').trim()||!String(b.designation||'').trim())return fail(res,400,'Name and designation required');
- const x=db.prepare('INSERT INTO staff(user_id,name,designation,phone,joined_on) VALUES(?,?,?,?,?)').run(b.user_id||null,String(b.name).trim(),String(b.designation).trim(),b.phone||null,b.joined_on||null);
- res.status(201).json({staff:db.prepare('SELECT * FROM staff WHERE id=?').get(x.lastInsertRowid)});
+ const b=req.body,name=String(b.name||'').trim(),designation=String(b.designation||'').trim();
+ const email=String(b.email||'').trim().toLowerCase(),password=String(b.password||'');
+ if(!name||!designation)return fail(res,400,'Name and designation required');
+ if((email||password)&&(!/^\\S+@\\S+\\.\\S+$/.test(email)||password.length<12))return fail(res,400,'Teacher login needs a valid email and password of at least 12 characters');
+ try{
+  const create=db.transaction(()=>{
+   let userId=null;
+   if(email){const u=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'teacher')").run(name,email,bcrypt.hashSync(password,12));userId=u.lastInsertRowid;}
+   const x=db.prepare('INSERT INTO staff(user_id,name,designation,phone,joined_on) VALUES(?,?,?,?,?)').run(userId,String(name),String(designation),b.phone||null,b.joined_on||null);
+   return db.prepare('SELECT id,user_id,name,designation,phone,joined_on,active FROM staff WHERE id=?').get(x.lastInsertRowid);
+  });
+  res.status(201).json({staff:create()});
+ }catch(e){if(String(e.message).includes('UNIQUE'))return fail(res,409,'Teacher email already exists');throw e;}
 });
 
 app.get('/api/attendance',auth,allow('admin','teacher','guardian','student'),(req,res)=>{
