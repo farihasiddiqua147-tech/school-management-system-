@@ -14,6 +14,8 @@
       <nav>
         <button class="nav-item active" data-view="dashboard">▦ <span>ড্যাশবোর্ড</span></button>
         <button class="nav-item" data-view="students">♙ <span>শিক্ষার্থী</span></button>
+        <button class="nav-item hidden" data-view="studentPortal">▣ <span>আমার প্যানেল</span></button>
+        <button class="nav-item hidden" data-view="teacherPortal">▤ <span>টিচার প্যানেল</span></button>
         <button class="nav-item" data-view="fees">৳ <span>বেতন ও ফি</span></button>
         <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
       </nav>
@@ -37,10 +39,24 @@
             <label>শ্রেণি<select name="className"><option>Class 1</option><option>Class 2</option><option>Class 3</option><option>Class 4</option><option>Class 5</option><option>Class 6</option><option>Class 7</option><option>Class 8</option><option>Class 9</option><option>Class 10</option></select></label>
             <label>রোল নম্বর<input required name="roll" placeholder="যেমন: 101" /></label>
             <label>অভিভাবকের ফোন<input name="phone" placeholder="01XXXXXXXXX" /></label>
+            <label>শিক্ষার্থীর লগইন ইমেইল (ঐচ্ছিক)<input name="email" type="email" placeholder="student@example.com" /></label>
+            <label>লগইন পাসওয়ার্ড (ঐচ্ছিক, কমপক্ষে ১২ অক্ষর)<input name="password" type="password" minlength="12" autocomplete="new-password" /></label>
             <div class="form-actions"><button type="button" class="secondary" id="cancelStudent">বাতিল</button><button class="primary" type="submit">সংরক্ষণ করুন</button></div>
           </form>
-          <div class="table-wrap"><table><thead><tr><th>নাম</th><th>শ্রেণি</th><th>রোল</th><th>অভিভাবকের ফোন</th></tr></thead><tbody id="studentRows"></tbody></table><p id="emptyStudents" class="empty">এখনও কোনো শিক্ষার্থী যোগ করা হয়নি।</p></div>
+          <div class="table-wrap"><table><thead><tr><th>নাম</th><th>শ্রেণি</th><th>রোল</th><th>অভিভাবকের ফোন</th><th>লগইন</th><th>অ্যাকশন</th></tr></thead><tbody id="studentRows"></tbody></table><p id="emptyStudents" class="empty">এখনও কোনো শিক্ষার্থী যোগ করা হয়নি।</p></div>
         </div>
+      </section>
+      <section id="studentPortalView" class="view hidden">
+        <div class="panel"><div class="panel-head"><div><h3>আমার তথ্য</h3><p>শুধু আপনার নিজের শিক্ষার্থী-তথ্য</p></div></div><div id="studentProfile"></div></div>
+        <div class="panel"><h3>আমার বেতন ও ফি</h3><div class="table-wrap"><table><thead><tr><th>বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th></tr></thead><tbody id="studentFeeRows"></tbody></table></div><p class="notice">বিকাশ অনলাইন পেমেন্ট এখনো চালু হয়নি। মার্চেন্ট API ও সার্ভার-সাইড পেমেন্ট যাচাই সম্পন্ন হলে এখানে নিরাপদ পেমেন্ট বাটন যুক্ত হবে।</p></div>
+        <div class="panel"><h3>আমার ফলাফল</h3><div class="table-wrap"><table><thead><tr><th>পরীক্ষা</th><th>বিষয়</th><th>নম্বর</th><th>পূর্ণমান</th></tr></thead><tbody id="studentResultRows"></tbody></table></div></div>
+        <div class="panel"><h3>উপস্থিতি</h3><div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>অবস্থা</th><th>নোট</th></tr></thead><tbody id="studentAttendanceRows"></tbody></table></div></div>
+        <div class="panel"><h3>হোমওয়ার্ক</h3><div id="studentHomework"></div></div>
+        <div class="panel"><h3>ক্লাস রুটিন</h3><div class="table-wrap"><table><thead><tr><th>দিন</th><th>পিরিয়ড</th><th>বিষয়</th><th>সময়</th><th>রুম</th></tr></thead><tbody id="studentRoutineRows"></tbody></table></div></div>
+      </section>
+      <section id="teacherPortalView" class="view hidden">
+        <div class="panel"><div class="panel-head"><div><h3>টিচার ড্যাশবোর্ড</h3><p>আপনার শিক্ষক প্রোফাইল ও দায়িত্বপ্রাপ্ত ক্লাস</p></div></div><div id="teacherProfile"></div><div id="teacherClasses"></div></div>
+        <div class="panel"><h3>শিক্ষক কার্যক্রম</h3><p>এই প্যানেলের পরবর্তী ধাপে উপস্থিতি, হোমওয়ার্ক, পরীক্ষার নম্বর ও রুটিন আপডেটের ফর্ম যুক্ত হবে। বর্তমানে অনুমোদিত API-গুলো ব্যবহার করা যায়, তবে পূর্ণ UI এখনো তৈরি হয়নি।</p></div>
       </section>
       <section id="feesView" class="view hidden">
         <div class="panel">
