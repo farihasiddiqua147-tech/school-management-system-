@@ -12,4 +12,6 @@ jobs:
           node-version: 20
       - run: npm install
       - run: node --check server/index.js
+      - run: node --check src/app.js
+      - run: node --check src/login.js
       - run: npm test
