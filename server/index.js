@@ -474,13 +474,30 @@ app.post('/api/expenses',auth,allow('admin','accountant'),validateBody,(req,res)
 app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
   const from=String(req.query.from||''),to=String(req.query.to||'');
   if((from&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(from))||(to&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)))return fail(res,400,'Use YYYY-MM-DD for report date filters');
-  const feeWhere=[],expenseWhere=[],feeArgs=[],expenseArgs=[];
-  if(from){feeWhere.push('created_at>=?');feeArgs.push(from);expenseWhere.push('expense_date>=?');expenseArgs.push(from);}
-  if(to){feeWhere.push('created_at<?');feeArgs.push(to+'T23:59:59');expenseWhere.push('expense_date<=?');expenseArgs.push(to);}
-  const feeSql='SELECT COALESCE(SUM(amount),0) billed,COALESCE(SUM(paid_amount),0) collected,COALESCE(SUM(amount-paid_amount),0) outstanding FROM fees'+(feeWhere.length?' WHERE '+feeWhere.join(' AND '):'');
+  if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
+  const invoiceWhere=[],paymentWhere=[],expenseWhere=[],invoiceArgs=[],paymentArgs=[],expenseArgs=[];
+  if(from){
+    invoiceWhere.push('created_at>=?');invoiceArgs.push(from+' 00:00:00');
+    paymentWhere.push('created_at>=?');paymentArgs.push(from+' 00:00:00');
+    expenseWhere.push('expense_date>=?');expenseArgs.push(from);
+  }
+  if(to){
+    invoiceWhere.push('created_at<?');invoiceArgs.push(to+' 23:59:59'+'Z');
+    paymentWhere.push('created_at<?');paymentArgs.push(to+' 23:59:59'+'Z');
+    expenseWhere.push('expense_date<=?');expenseArgs.push(to);
+  }
+  const invoiceSql='SELECT COALESCE(SUM(amount),0) billed,COALESCE(SUM(amount-paid_amount),0) outstanding FROM fees'+(invoiceWhere.length?' WHERE '+invoiceWhere.join(' AND '):'');
+  const paymentSql='SELECT COALESCE(SUM(amount),0) collected FROM fee_payments'+(paymentWhere.length?' WHERE '+paymentWhere.join(' AND '):'');
   const expenseSql='SELECT COALESCE(SUM(amount),0) total,count(*) AS entries FROM expenses'+(expenseWhere.length?' WHERE '+expenseWhere.join(' AND '):'');
-  const income=db.prepare(feeSql).get(...feeArgs),expenses=db.prepare(expenseSql).get(...expenseArgs);
-  res.json({income,expenses:{total:expenses.total,entries:expenses.entries},netCashFlow:Number((income.collected-expenses.total).toFixed(2)),currency:'BDT',note:'Income uses fee invoices created in the selected period; collected is current paid_amount, not payment-date accounting. Use the payment ledger for audited cash accounting.'});
+  const invoices=db.prepare(invoiceSql).get(...invoiceArgs),payments=db.prepare(paymentSql).get(...paymentArgs),expenses=db.prepare(expenseSql).get(...expenseArgs);
+  res.json({
+    period:{from:from||null,to:to||null},
+    income:{billed:invoices.billed,collected:payments.collected,outstandingForPeriodInvoices:invoices.outstanding},
+    expenses:{total:expenses.total,entries:expenses.entries},
+    netCashFlow:Number((payments.collected-expenses.total).toFixed(2)),
+    currency:'BDT',
+    note:'Collected income is based on recorded fee_payments within the period. Legacy paid amounts without payment ledger entries are not counted as period collections.'
+  });
 });
 app.get('/api/notices',auth,(req,res)=>{
   const audienceForRole={admin:['all','admin'],teacher:['all','teacher'],student:['all','student'],guardian:['all','guardian'],accountant:['all','accountant']};
