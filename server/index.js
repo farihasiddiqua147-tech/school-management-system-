@@ -213,7 +213,7 @@ app.post('/api/students',auth,allow('admin','teacher'),validateBody,(req,res)=>{
   const b=req.body, name=String(b.name||'').trim(), cls=String(b.class_name||'').trim(), roll=String(b.roll||'').trim();
   const email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'');
   if(!name||!cls||!roll)return fail(res,400,'Student name, class and roll are required');
-  if((email||password) && (!/^\\S+@\\S+\\.\\S+$/.test(email)||password.length<12))return fail(res,400,'Student login needs a valid email and password of at least 12 characters');
+  if((email||password) && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<12))return fail(res,400,'Student login needs a valid email and password of at least 12 characters');
   try {
     const create=db.transaction(()=>{
       let userId=null;
