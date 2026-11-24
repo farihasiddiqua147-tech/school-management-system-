@@ -215,8 +215,36 @@ async function loadStudentPortal() {
 async function loadTeacherPortal() {
   const data=await api('/api/teacher/me');
   $('teacherProfile').textContent=data.teacher.name+' · '+data.teacher.designation;
-  $('teacherClasses').textContent='দায়িত্বপ্রাপ্ত ক্লাস: '+(data.classes||[]).join(', ') || 'ক্লাস বরাদ্দ হয়নি';
+  $('teacherClasses').textContent='দায়িত্বপ্রাপ্ত ক্লাস: '+((data.classes||[]).join(', ')||'এখনো ক্লাস বরাদ্দ হয়নি। অ্যাডমিনকে রুটিনে দায়িত্ব দিতে বলুন।');
+  const select=$('teacherClass');select.innerHTML='<option value="">ক্লাস নির্বাচন করুন</option>';
+  (data.classes||[]).forEach(c=>{const o=document.createElement('option');o.value=c;o.textContent=c;select.appendChild(o);});
+  const date=$('teacherDate');date.value=new Date().toISOString().slice(0,10);
+  const routine=await api('/api/teacher/timetable');const body=$('teacherRoutineRows');body.innerHTML='';
+  (routine.timetable||[]).forEach(r=>{const tr=document.createElement('tr');[r.class_name,r.weekday,r.period,r.subject,[r.starts_at,r.ends_at].filter(Boolean).join('–')||'—',r.room||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});body.appendChild(tr);});
+  await loadTeacherExams();
 }
+
+
+// Teacher dashboard workflows
+let teacherStudents=[];
+async function loadTeacherAttendance(){
+ const className=$('teacherClass').value,date=$('teacherDate').value;
+ if(!className||!date){toast('ক্লাস ও তারিখ নির্বাচন করুন');return;}
+ try{const data=await api('/api/teacher/attendance?class_name='+encodeURIComponent(className)+'&date='+encodeURIComponent(date));const body=$('teacherAttendanceRows');body.innerHTML='';$('teacherAttendanceEmpty').classList.toggle('hidden',data.students.length>0);
+ data.students.forEach(st=>{const tr=document.createElement('tr');const roll=document.createElement('td');roll.textContent=st.roll;const name=document.createElement('td');name.textContent=st.name;const cell=document.createElement('td');const select=document.createElement('select');select.dataset.studentId=st.id;[['present','উপস্থিত'],['absent','অনুপস্থিত'],['late','বিলম্ব'],['leave','ছুটি']].forEach(([v,l])=>{const o=document.createElement('option');o.value=v;o.textContent=l;select.appendChild(o);});select.value=st.status||'present';cell.appendChild(select);tr.append(roll,name,cell);body.appendChild(tr);});
+ teacherStudents=data.students;
+ const studentSelect=$('teacherMarkStudent');studentSelect.innerHTML='<option value="">শিক্ষার্থী নির্বাচন</option>';data.students.forEach(st=>{const o=document.createElement('option');o.value=st.id;o.textContent=st.name+' — '+st.roll;studentSelect.appendChild(o);});
+ }catch(e){toast(e.message);}
+}
+$('loadTeacherAttendance').addEventListener('click',loadTeacherAttendance);
+$('saveTeacherAttendance').addEventListener('click',async()=>{const date=$('teacherDate').value;const records=[...$('teacherAttendanceRows').querySelectorAll('select[data-student-id]')].map(x=>({student_id:Number(x.dataset.studentId),status:x.value}));if(!records.length){toast('আগে শিক্ষার্থী লোড করুন');return;}try{await api('/api/attendance/bulk',{method:'POST',body:JSON.stringify({date,records})});toast('উপস্থিতি সংরক্ষণ হয়েছে');}catch(e){toast(e.message);}});
+$('teacherHomeworkForm').addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget).entries());data.class_name=$('teacherClass').value;if(!data.class_name){toast('ক্লাস নির্বাচন করুন');return;}try{await api('/api/homework',{method:'POST',body:JSON.stringify(data)});e.currentTarget.reset();toast('হোমওয়ার্ক প্রকাশ হয়েছে');}catch(err){toast(err.message);}});
+$('teacherExamForm').addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget).entries());data.class_name=$('teacherClass').value;if(!data.class_name){toast('ক্লাস নির্বাচন করুন');return;}try{const r=await api('/api/exams',{method:'POST',body:JSON.stringify(data)});e.currentTarget.reset();await loadTeacherExams();$('teacherExamSelect').value=r.exam.id;toast('পরীক্ষা তৈরি হয়েছে');}catch(err){toast(err.message);}});
+async function loadTeacherExams(){try{const r=await api('/api/exams');const sel=$('teacherExamSelect');sel.innerHTML='<option value="">পরীক্ষা নির্বাচন</option>';(r.exams||[]).filter(x=>x.class_name===$('teacherClass').value).forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.name+' · '+(x.exam_date||'তারিখ নেই');sel.appendChild(o);});}catch(e){toast(e.message);}}
+$('teacherMarksForm').addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget).entries());data.marks=Number(data.marks);data.max_marks=Number(data.max_marks);try{await api('/api/results',{method:'POST',body:JSON.stringify(data)});toast('নম্বর সংরক্ষণ হয়েছে');e.currentTarget.reset();}catch(err){toast(err.message);}});
+$('teacherClass').addEventListener('change',async()=>{await loadTeacherAttendance();await loadTeacherExams();});
+$('routineAssignForm').addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget).entries());data.period=Number(data.period);try{await api('/api/timetable',{method:'POST',body:JSON.stringify(data)});toast('শিক্ষকের ক্লাস রুটিন বরাদ্দ হয়েছে');}catch(err){toast(err.message);}});
+async function loadRoutineTeachers(){try{const r=await api('/api/staff');const sel=$('routineTeacher');sel.innerHTML='<option value="">শিক্ষক নির্বাচন</option>';(r.staff||[]).filter(x=>x.active&&x.user_id).forEach(x=>{const o=document.createElement('option');o.value=x.id;o.textContent=x.name+' — '+x.designation;sel.appendChild(o);});}catch(e){toast(e.message);}}
 
 async function init() {
   try {
@@ -236,7 +264,7 @@ async function init() {
     await refreshStudents();
     if (!adminOnly) $('settingsView').classList.add('hidden');
     if (financeRole) await loadFees();
-    if (adminOnly) await loadGatewaySettings();
+    if (adminOnly) { await loadGatewaySettings(); await loadRoutineTeachers(); }
   } catch (error) { toast(error.message); }
 }
 init();
