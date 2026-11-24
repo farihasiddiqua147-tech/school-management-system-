@@ -190,7 +190,7 @@ app.get('/api/student/me',auth,allow('student'),(req,res)=>{
  const attendance=db.prepare('SELECT attendance_date,status,note FROM attendance WHERE student_id=? ORDER BY attendance_date DESC LIMIT 120').all(student.id);
  const fees=db.prepare('SELECT id,description,fee_type,billing_period,amount,paid_amount,due_date,status FROM fees WHERE student_id=? ORDER BY due_date DESC,id DESC LIMIT 200').all(student.id);
  const homework=db.prepare('SELECT id,subject,title,description,due_date FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 100').all(student.class_name);
- const results=db.prepare('SELECT r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject').all(student.id);
+ const results=db.prepare('SELECT r.exam_id,r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject').all(student.id);
  const timetable=db.prepare('SELECT weekday,period,subject,starts_at,ends_at,room FROM timetable WHERE class_name=? ORDER BY CASE weekday WHEN "Saturday" THEN 1 WHEN "Sunday" THEN 2 WHEN "Monday" THEN 3 WHEN "Tuesday" THEN 4 WHEN "Wednesday" THEN 5 WHEN "Thursday" THEN 6 ELSE 7 END,period').all(student.class_name);
  res.json({student,attendance,fees,homework,results,timetable});
 });
