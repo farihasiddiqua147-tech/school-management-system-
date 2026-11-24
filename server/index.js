@@ -257,7 +257,10 @@ app.post('/api/staff',auth,allow('admin'),validateBody,(req,res)=>{
 
 app.get('/api/attendance',auth,allow('admin','teacher','guardian','student'),(req,res)=>{
  const date=String(req.query.date||new Date().toISOString().slice(0,10));
- res.json({date,attendance:db.prepare('SELECT a.*,s.name student_name,s.class_name,s.roll FROM attendance a JOIN students s ON s.id=a.student_id WHERE attendance_date=? ORDER BY s.class_name,s.roll').all(date)});
+ let sql='SELECT a.*,s.name student_name,s.class_name,s.roll FROM attendance a JOIN students s ON s.id=a.student_id WHERE attendance_date=?',args=[date];
+ if(req.user.role==='student'){const st=db.prepare('SELECT id FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');sql+=' AND s.id=?';args.push(st.id);}
+ if(req.user.role==='guardian'){const ids=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id);if(!ids.length)return res.json({date,attendance:[]});sql+=' AND s.id IN ('+ids.map(()=>'?').join(',')+')';args.push(...ids);}
+ res.json({date,attendance:db.prepare(sql+' ORDER BY s.class_name,s.roll').all(...args)});
 });
 app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const {date,records}=req.body;if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date))||!Array.isArray(records)||records.length>500)return fail(res,400,'Valid date and up to 500 records required');
@@ -265,7 +268,10 @@ app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,
  const tx=db.transaction(()=>records.forEach(r=>{if(!parseId(r.student_id)||!['present','absent','late','leave'].includes(r.status))throw new Error('Invalid attendance record');save.run(Number(r.student_id),date,r.status,r.note||null,req.user.id)}));
  try{tx();res.json({ok:true,saved:records.length});}catch(e){return fail(res,400,e.message);}
 });
-app.get('/api/homework',auth,(req,res)=>res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()}));
+app.get('/api/homework',auth,(req,res)=>{
+ if(req.user.role==='student'){const st=db.prepare('SELECT class_name FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 300').all(st.class_name)});}
+ res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()});
+});
 app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.class_name||!b.subject||!b.title)return fail(res,400,'Class, subject and title required');
  const x=db.prepare('INSERT INTO homework(class_name,subject,title,description,due_date,created_by) VALUES(?,?,?,?,?,?)').run(b.class_name,b.subject,b.title,b.description||null,b.due_date||null,req.user.id);
@@ -283,8 +289,11 @@ app.post('/api/results',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  res.json({ok:true});
 });
 app.get('/api/results',auth,allow('admin','teacher','student','guardian'),(req,res)=>{
- let sql='SELECT r.*,e.name exam_name,e.class_name,s.name student_name,s.roll FROM results r JOIN exams e ON e.id=r.exam_id JOIN students s ON s.id=r.student_id',args=[];
- if(req.query.exam_id){sql+=' WHERE r.exam_id=?';args.push(Number(req.query.exam_id));}
+ let sql='SELECT r.*,e.name exam_name,e.class_name,s.name student_name,s.roll FROM results r JOIN exams e ON e.id=r.exam_id JOIN students s ON s.id=r.student_id',where=[],args=[];
+ if(req.query.exam_id){where.push('r.exam_id=?');args.push(Number(req.query.exam_id));}
+ if(req.user.role==='student'){const st=db.prepare('SELECT id FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');where.push('r.student_id=?');args.push(st.id);}
+ if(req.user.role==='guardian'){const ids=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id);if(!ids.length)return res.json({results:[]});where.push('r.student_id IN ('+ids.map(()=>'?').join(',')+')');args.push(...ids);}
+ if(where.length)sql+=' WHERE '+where.join(' AND ');
  res.json({results:db.prepare(sql+' ORDER BY e.name,s.class_name,s.roll,r.subject LIMIT 2000').all(...args)});
 });
 app.get('/api/fees',auth,allow('admin','accountant'),(req,res)=>{
@@ -348,7 +357,7 @@ app.get('/api/reports/marksheet',auth,allow('admin','teacher','student','guardia
   const examId=parseId(req.query.exam_id), studentId=parseId(req.query.student_id);
   if(!examId||!studentId)return fail(res,400,'exam_id and student_id are required');
   if(req.user.role==='student') {
-    const linked=db.prepare('SELECT id FROM students WHERE id=? AND name=?').get(studentId,req.user.name);
+    const linked=db.prepare('SELECT id FROM students WHERE id=? AND user_id=?').get(studentId,req.user.id);
     if(!linked)return fail(res,403,'You may only view your own marksheet');
   }
   if(req.user.role==='guardian') {
