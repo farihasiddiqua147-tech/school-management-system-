@@ -210,6 +210,16 @@ app.get('/api/student/me',auth,allow('student'),(req,res)=>{
 });
 
 // Teacher self-service panel API, limited to classes associated with the teacher's staff record.
+app.get('/api/guardian/me',auth,allow('guardian'),(req,res)=>{
+ const children=db.prepare("SELECT id,student_code,name,class_name,roll,status FROM students WHERE guardian_user_id=? AND status='active' ORDER BY class_name,CAST(roll AS INTEGER),roll LIMIT 50").all(req.user.id);
+ const getAttendance=db.prepare('SELECT attendance_date,status,note FROM attendance WHERE student_id=? ORDER BY attendance_date DESC LIMIT 120');
+ const getFees=db.prepare('SELECT id,description,fee_type,billing_period,amount,paid_amount,due_date,status FROM fees WHERE student_id=? ORDER BY due_date DESC,id DESC LIMIT 200');
+ const getResults=db.prepare('SELECT r.exam_id,r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject LIMIT 500');
+ const getHomework=db.prepare('SELECT id,subject,title,description,due_date FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 100');
+ const getTimetable=db.prepare('SELECT weekday,period,subject,starts_at,ends_at,room FROM timetable WHERE class_name=? ORDER BY weekday,period LIMIT 100');
+ const data=children.map(student=>({student,attendance:getAttendance.all(student.id),fees:getFees.all(student.id),results:getResults.all(student.id),homework:getHomework.all(student.class_name),timetable:getTimetable.all(student.class_name)}));
+ res.json({children:data});
+});
 app.get('/api/teacher/me',auth,allow('teacher'),(req,res)=>{
  const staff=db.prepare('SELECT id,name,designation FROM staff WHERE user_id=? AND active=1').get(req.user.id);
  if(!staff)return fail(res,404,'No active teacher profile is linked to this login');
