@@ -235,7 +235,7 @@ app.get('/api/dashboard',auth,(req,res)=>{
   const outstanding=db.prepare("SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE status!='paid'").get().amount;
   res.json({students:count('students'),staff:count('staff'),exams:count('exams'),notices:count('notices'),outstandingFees:outstanding});
 });
-app.get('/api/students',auth,allow('teacher','accountant','guardian'),(req,res)=>{
+app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(req,res)=>{
   const {className,status='active',q=''}=req.query;
   let sql='SELECT id,student_code,name,class_name,roll,guardian_name,guardian_phone,status,created_at,user_id FROM students WHERE 1=1', args=[];
   if(className){sql+=' AND class_name=?';args.push(String(className));}
