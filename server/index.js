@@ -325,6 +325,7 @@ app.get('/api/attendance',auth,allow('admin','teacher','guardian','student'),(re
  let sql='SELECT a.*,s.name student_name,s.class_name,s.roll FROM attendance a JOIN students s ON s.id=a.student_id WHERE attendance_date=?',args=[date];
  if(req.user.role==='student'){const st=db.prepare('SELECT id FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');sql+=' AND s.id=?';args.push(st.id);}
  if(req.user.role==='guardian'){const ids=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id);if(!ids.length)return res.json({date,attendance:[]});sql+=' AND s.id IN ('+ids.map(()=>'?').join(',')+')';args.push(...ids);}
+ if(req.user.role==='teacher'){const classes=teacherClassNames(req.user.id);if(!classes.length)return res.json({date,attendance:[]});sql+=' AND s.class_name IN ('+classes.map(()=>'?').join(',')+')';args.push(...classes);}
  res.json({date,attendance:db.prepare(sql+' ORDER BY s.class_name,s.roll').all(...args)});
 });
 app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,res)=>{
@@ -378,6 +379,7 @@ app.get('/api/results',auth,allow('admin','teacher','student','guardian'),(req,r
  if(req.query.exam_id){where.push('r.exam_id=?');args.push(Number(req.query.exam_id));}
  if(req.user.role==='student'){const st=db.prepare('SELECT id FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');where.push('r.student_id=?');args.push(st.id);}
  if(req.user.role==='guardian'){const ids=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id);if(!ids.length)return res.json({results:[]});where.push('r.student_id IN ('+ids.map(()=>'?').join(',')+')');args.push(...ids);}
+ if(req.user.role==='teacher'){const classes=teacherClassNames(req.user.id);if(!classes.length)return res.json({results:[]});where.push('e.class_name IN ('+classes.map(()=>'?').join(',')+')');args.push(...classes);}
  if(where.length)sql+=' WHERE '+where.join(' AND ');
  res.json({results:db.prepare(sql+' ORDER BY e.name,s.class_name,s.roll,r.subject LIMIT 2000').all(...args)});
 });
