@@ -75,3 +75,14 @@ test('application refuses DATABASE_URL until PostgreSQL adapter is implemented',
   assert.ok(guardAt < sqliteOpenAt, 'DATABASE_URL guard must run before SQLite opens');
   assert.match(source.slice(guardAt, sqliteOpenAt), /process\.exit\(1\)/);
 });
+
+
+test('admin role is authorized to list students', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  assert.match(
+    source,
+    /app\.get\('\/api\/students',\s*auth,\s*allow\('admin','teacher','accountant','guardian'\)/
+  );
+});
