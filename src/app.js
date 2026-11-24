@@ -72,6 +72,10 @@ document.querySelectorAll('[data-view="students"]').forEach(el=>el.classList.tog
 document.querySelectorAll('[data-view="dashboard"]').forEach(el=>el.classList.toggle('hidden',studentOnly||teacherOnly));
 document.querySelectorAll('[data-view="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 const financeRole = ['admin','accountant'].includes(user.role);
+const studentManagementRole = ['admin','teacher'].includes(user.role);
+$('showStudentForm').classList.toggle('hidden', !studentManagementRole);
+document.querySelectorAll('.quick-card[data-go="students"]').forEach(el => el.classList.toggle('hidden', !studentManagementRole));
+document.querySelectorAll('.quick-card[data-go="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 document.querySelectorAll('[data-view="fees"]').forEach(el => el.classList.toggle('hidden', !financeRole));
 if (!financeRole) $('feesView').classList.add('hidden');
 
