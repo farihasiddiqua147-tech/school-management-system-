@@ -162,7 +162,7 @@ app.get('/api/results',auth,allow('admin','teacher','student','guardian'),(req,r
  if(req.query.exam_id){sql+=' WHERE r.exam_id=?';args.push(Number(req.query.exam_id));}
  res.json({results:db.prepare(sql+' ORDER BY e.name,s.class_name,s.roll,r.subject LIMIT 2000').all(...args)});
 });
-app.get('/api/fees',auth,allow('admin','accountant','guardian','student'),(req,res)=>{
+app.get('/api/fees',auth,allow('admin','accountant'),(req,res)=>{
  let sql='SELECT f.*,s.name student_name,s.class_name,s.roll FROM fees f JOIN students s ON s.id=f.student_id',args=[];
  if(req.query.student_id){sql+=' WHERE f.student_id=?';args.push(Number(req.query.student_id));}
  sql+=' ORDER BY f.due_date DESC,f.id DESC LIMIT 1000';
@@ -177,7 +177,7 @@ app.post('/api/fees',auth,allow('admin','accountant'),validateBody,(req,res)=>{
  const x=db.prepare("INSERT INTO fees(student_id,description,amount,paid_amount,due_date,status,fee_type,billing_period) VALUES(?,?,?,0,?,'unpaid',?,?)").run(studentId,String(b.description).trim(),amount,b.due_date||null,feeType,b.billing_period||null);
  res.status(201).json({fee:db.prepare('SELECT * FROM fees WHERE id=?').get(x.lastInsertRowid)});
 });
-app.get('/api/fees/:id/payments',auth,allow('admin','accountant','guardian','student'),(req,res)=>{
+app.get('/api/fees/:id/payments',auth,allow('admin','accountant'),(req,res)=>{
  const id=parseId(req.params.id);if(!id)return fail(res,400,'Invalid fee id');
  const fee=db.prepare('SELECT id,student_id FROM fees WHERE id=?').get(id);if(!fee)return fail(res,404,'Fee not found');
  res.json({payments:db.prepare('SELECT id,receipt_no,amount,method,reference,created_at FROM fee_payments WHERE fee_id=? ORDER BY id DESC').all(id)});
