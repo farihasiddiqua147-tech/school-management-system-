@@ -23,6 +23,10 @@ const db = new Database(dbFile);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+// Link student records to individual login accounts.
+const studentColumns = db.prepare("PRAGMA table_info(students)").all().map(c => c.name);
+if (!studentColumns.includes('user_id')) db.exec("ALTER TABLE students ADD COLUMN user_id INTEGER REFERENCES users(id)");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id) WHERE user_id IS NOT NULL");
 // Idempotent fee-module migrations for existing SQLite databases.
 const feeColumns = db.prepare("PRAGMA table_info(fees)").all().map(c => c.name);
 if (!feeColumns.includes('fee_type')) db.exec("ALTER TABLE fees ADD COLUMN fee_type TEXT NOT NULL DEFAULT 'other'");
@@ -170,6 +174,27 @@ app.put('/api/payment-gateways/:provider', auth, allow('admin'), validateBody, (
 });
 
 
+
+// Student self-service panel API: every query is scoped to the authenticated student's linked record.
+app.get('/api/student/me',auth,allow('student'),(req,res)=>{
+ const student=db.prepare("SELECT id,student_code,name,class_name,roll,status FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+ if(!student)return fail(res,404,'No active student profile is linked to this login');
+ const attendance=db.prepare('SELECT attendance_date,status,note FROM attendance WHERE student_id=? ORDER BY attendance_date DESC LIMIT 120').all(student.id);
+ const fees=db.prepare('SELECT id,description,fee_type,billing_period,amount,paid_amount,due_date,status FROM fees WHERE student_id=? ORDER BY due_date DESC,id DESC LIMIT 200').all(student.id);
+ const homework=db.prepare('SELECT id,subject,title,description,due_date FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 100').all(student.class_name);
+ const results=db.prepare('SELECT r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject').all(student.id);
+ const timetable=db.prepare('SELECT weekday,period,subject,starts_at,ends_at,room FROM timetable WHERE class_name=? ORDER BY CASE weekday WHEN "Saturday" THEN 1 WHEN "Sunday" THEN 2 WHEN "Monday" THEN 3 WHEN "Tuesday" THEN 4 WHEN "Wednesday" THEN 5 WHEN "Thursday" THEN 6 ELSE 7 END,period').all(student.class_name);
+ res.json({student,attendance,fees,homework,results,timetable});
+});
+
+// Teacher self-service panel API, limited to classes associated with the teacher's staff record.
+app.get('/api/teacher/me',auth,allow('teacher'),(req,res)=>{
+ const staff=db.prepare('SELECT id,name,designation FROM staff WHERE user_id=? AND active=1').get(req.user.id);
+ if(!staff)return fail(res,404,'No active teacher profile is linked to this login');
+ const classes=db.prepare('SELECT DISTINCT class_name FROM timetable WHERE teacher_id=? ORDER BY class_name').all(staff.id).map(x=>x.class_name);
+ res.json({teacher:staff,classes});
+});
+
 app.get('/api/dashboard',auth,(req,res)=>{
   const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
   const outstanding=db.prepare("SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE status!='paid'").get().amount;
@@ -186,9 +211,24 @@ app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(r
 });
 app.post('/api/students',auth,allow('admin','teacher'),validateBody,(req,res)=>{
   const b=req.body, name=String(b.name||'').trim(), cls=String(b.class_name||'').trim(), roll=String(b.roll||'').trim();
+  const email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'');
   if(!name||!cls||!roll)return fail(res,400,'Student name, class and roll are required');
-  try { const x=db.prepare('INSERT INTO students(student_code,name,class_name,roll,guardian_name,guardian_phone,guardian_user_id) VALUES(?,?,?,?,?,?,?)').run(b.student_code||null,name,cls,roll,b.guardian_name||null,b.guardian_phone||null,b.guardian_user_id||null); res.status(201).json({student:db.prepare('SELECT * FROM students WHERE id=?').get(x.lastInsertRowid)}); }
-  catch(e){if(String(e.message).includes('UNIQUE'))return fail(res,409,'Student code already exists');throw e;}
+  if((email||password) && (!/^\\S+@\\S+\\.\\S+$/.test(email)||password.length<12))return fail(res,400,'Student login needs a valid email and password of at least 12 characters');
+  try {
+    const create=db.transaction(()=>{
+      let userId=null;
+      if(email){const u=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'student')").run(name,email,bcrypt.hashSync(password,12));userId=u.lastInsertRowid;}
+      const x=db.prepare('INSERT INTO students(student_code,name,class_name,roll,guardian_name,guardian_phone,guardian_user_id,user_id) VALUES(?,?,?,?,?,?,?,?)').run(b.student_code||null,name,cls,roll,b.guardian_name||null,b.guardian_phone||null,b.guardian_user_id||null,userId);
+      return db.prepare('SELECT id,student_code,name,class_name,roll,guardian_name,guardian_phone,status,user_id FROM students WHERE id=?').get(x.lastInsertRowid);
+    });
+    res.status(201).json({student:create()});
+  } catch(e){if(String(e.message).includes('UNIQUE'))return fail(res,409,'Email or student code already exists');throw e;}
+});
+app.post('/api/students/:id/deactivate',auth,allow('admin'),(req,res)=>{
+ const id=parseId(req.params.id);if(!id)return fail(res,400,'Invalid student id');
+ const student=db.prepare('SELECT id,user_id FROM students WHERE id=?').get(id);if(!student)return fail(res,404,'Student not found');
+ const tx=db.transaction(()=>{db.prepare("UPDATE students SET status='inactive' WHERE id=?").run(id);if(student.user_id)db.prepare('UPDATE users SET active=0 WHERE id=?').run(student.user_id);});
+ tx();res.json({ok:true,message:'Student account deactivated; academic and payment history retained.'});
 });
 app.patch('/api/students/:id',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const id=parseId(req.params.id);if(!id)return fail(res,400,'Invalid id');
