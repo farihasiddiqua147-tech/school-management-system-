@@ -194,6 +194,33 @@ app.get('/api/teacher/me',auth,allow('teacher'),(req,res)=>{
  const classes=db.prepare('SELECT DISTINCT class_name FROM timetable WHERE teacher_id=? ORDER BY class_name').all(staff.id).map(x=>x.class_name);
  res.json({teacher:staff,classes});
 });
+function teacherStaffId(userId){const row=db.prepare('SELECT id FROM staff WHERE user_id=? AND active=1').get(userId);return row?row.id:null;}
+function teacherClassNames(userId){const staffId=teacherStaffId(userId);return staffId?db.prepare('SELECT DISTINCT class_name FROM timetable WHERE teacher_id=? ORDER BY class_name').all(staffId).map(r=>r.class_name):[];}
+function teacherCanAccessClass(userId,className){return teacherClassNames(userId).includes(String(className||''));}
+app.get('/api/teacher/class-students',auth,allow('teacher'),(req,res)=>{
+ const className=String(req.query.class_name||'');if(!teacherCanAccessClass(req.user.id,className))return fail(res,403,'এই ক্লাসটি আপনার দায়িত্বে বরাদ্দ নেই');
+ const rows=db.prepare("SELECT id,name,class_name,roll,student_code FROM students WHERE class_name=? AND status='active' ORDER BY CAST(roll AS INTEGER),roll,name").all(className);
+ res.json({students:rows});
+});
+app.get('/api/teacher/attendance',auth,allow('teacher'),(req,res)=>{
+ const className=String(req.query.class_name||''),date=String(req.query.date||new Date().toISOString().slice(0,10));
+ if(!teacherCanAccessClass(req.user.id,className))return fail(res,403,'এই ক্লাসটি আপনার দায়িত্বে বরাদ্দ নেই');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return fail(res,400,'সঠিক তারিখ দিন');
+ const rows=db.prepare('SELECT s.id,s.name,s.roll,a.status,a.note FROM students s LEFT JOIN attendance a ON a.student_id=s.id AND a.attendance_date=? WHERE s.class_name=? AND s.status=\'active\' ORDER BY CAST(s.roll AS INTEGER),s.roll,s.name').all(date,className);
+ res.json({date,className,students:rows});
+});
+app.get('/api/teacher/timetable',auth,allow('teacher'),(req,res)=>{
+ const staffId=teacherStaffId(req.user.id);if(!staffId)return fail(res,404,'শিক্ষক প্রোফাইল পাওয়া যায়নি');
+ res.json({timetable:db.prepare('SELECT class_name,weekday,period,subject,starts_at,ends_at,room FROM timetable WHERE teacher_id=? ORDER BY class_name,weekday,period').all(staffId)});
+});
+app.post('/api/timetable',auth,allow('admin'),validateBody,(req,res)=>{
+ const b=req.body,teacherId=parseId(b.teacher_id),period=Number(b.period);
+ if(!teacherId||!String(b.class_name||'').trim()||!String(b.weekday||'').trim()||!Number.isInteger(period)||period<1||!String(b.subject||'').trim())return fail(res,400,'শিক্ষক, ক্লাস, দিন, পিরিয়ড ও বিষয় দিতে হবে');
+ const staff=db.prepare('SELECT id FROM staff WHERE id=? AND active=1').get(teacherId);if(!staff)return fail(res,404,'সক্রিয় শিক্ষক পাওয়া যায়নি');
+ try{db.prepare(`INSERT INTO timetable(class_name,weekday,period,subject,teacher_id,starts_at,ends_at,room) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(class_name,weekday,period) DO UPDATE SET subject=excluded.subject,teacher_id=excluded.teacher_id,starts_at=excluded.starts_at,ends_at=excluded.ends_at,room=excluded.room`).run(String(b.class_name).trim(),String(b.weekday),period,String(b.subject).trim(),teacherId,b.starts_at||null,b.ends_at||null,b.room||null);res.json({ok:true});}
+ catch(e){return fail(res,400,'রুটিন সংরক্ষণ করা যায়নি: '+e.message);}
+});
+
 
 app.get('/api/dashboard',auth,(req,res)=>{
   const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
@@ -265,7 +292,7 @@ app.get('/api/attendance',auth,allow('admin','teacher','guardian','student'),(re
 app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const {date,records}=req.body;if(!/^\d{4}-\d{2}-\d{2}$/.test(String(date))||!Array.isArray(records)||records.length>500)return fail(res,400,'Valid date and up to 500 records required');
  const save=db.prepare("INSERT INTO attendance(student_id,attendance_date,status,note,marked_by) VALUES(?,?,?,?,?) ON CONFLICT(student_id,attendance_date) DO UPDATE SET status=excluded.status,note=excluded.note,marked_by=excluded.marked_by");
- const tx=db.transaction(()=>records.forEach(r=>{if(!parseId(r.student_id)||!['present','absent','late','leave'].includes(r.status))throw new Error('Invalid attendance record');save.run(Number(r.student_id),date,r.status,r.note||null,req.user.id)}));
+ const tx=db.transaction(()=>records.forEach(r=>{if(!parseId(r.student_id)||!['present','absent','late','leave'].includes(r.status))throw new Error('Invalid attendance record');if(req.user.role==='teacher'){const student=db.prepare('SELECT class_name FROM students WHERE id=?').get(Number(r.student_id));if(!student||!teacherCanAccessClass(req.user.id,student.class_name))throw new Error('শুধু দায়িত্বপ্রাপ্ত ক্লাসের উপস্থিতি নেওয়া যাবে');}save.run(Number(r.student_id),date,r.status,r.note||null,req.user.id)}));
  try{tx();res.json({ok:true,saved:records.length});}catch(e){return fail(res,400,e.message);}
 });
 app.get('/api/homework',auth,(req,res)=>{
@@ -274,17 +301,20 @@ app.get('/api/homework',auth,(req,res)=>{
 });
 app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.class_name||!b.subject||!b.title)return fail(res,400,'Class, subject and title required');
+ if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,b.class_name))return fail(res,403,'এই ক্লাসটি আপনার দায়িত্বে বরাদ্দ নেই');
  const x=db.prepare('INSERT INTO homework(class_name,subject,title,description,due_date,created_by) VALUES(?,?,?,?,?,?)').run(b.class_name,b.subject,b.title,b.description||null,b.due_date||null,req.user.id);
  res.status(201).json({homework:db.prepare('SELECT * FROM homework WHERE id=?').get(x.lastInsertRowid)});
 });
 app.get('/api/exams',auth,(req,res)=>res.json({exams:db.prepare('SELECT * FROM exams ORDER BY exam_date DESC LIMIT 300').all()}));
 app.post('/api/exams',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.name||!b.class_name)return fail(res,400,'Exam name and class required');
+ if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,b.class_name))return fail(res,403,'এই ক্লাসটি আপনার দায়িত্বে বরাদ্দ নেই');
  const x=db.prepare('INSERT INTO exams(name,class_name,exam_date,academic_year) VALUES(?,?,?,?)').run(b.name,b.class_name,b.exam_date||null,b.academic_year||null);
  res.status(201).json({exam:db.prepare('SELECT * FROM exams WHERE id=?').get(x.lastInsertRowid)});
 });
 app.post('/api/results',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!parseId(b.exam_id)||!parseId(b.student_id)||!String(b.subject||'').trim()||!Number.isFinite(Number(b.marks))||!Number.isFinite(Number(b.max_marks))||Number(b.max_marks)<=0||Number(b.marks)<0||Number(b.marks)>Number(b.max_marks))return fail(res,400,'Valid exam, student, subject and marks are required');
+ if(req.user.role==='teacher'){const pair=db.prepare('SELECT e.class_name,s.class_name student_class FROM exams e JOIN students s ON s.id=? WHERE e.id=?').get(b.student_id,b.exam_id);if(!pair||pair.class_name!==pair.student_class||!teacherCanAccessClass(req.user.id,pair.class_name))return fail(res,403,'এই শিক্ষার্থীর ফলাফল সম্পাদনার অনুমতি নেই');}
  db.prepare('INSERT INTO results(exam_id,student_id,subject,marks,max_marks) VALUES(?,?,?,?,?) ON CONFLICT(exam_id,student_id,subject) DO UPDATE SET marks=excluded.marks,max_marks=excluded.max_marks').run(b.exam_id,b.student_id,b.subject,b.marks,b.max_marks);
  res.json({ok:true});
 });
