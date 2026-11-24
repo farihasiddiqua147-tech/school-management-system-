@@ -362,7 +362,9 @@ async function loadGuardianPortal() {
         table.appendChild(tbody);wrap.appendChild(table);card.appendChild(wrap);
       };
       addTable('ফি ও বকেয়া',['বিবরণ','ধার্য','জমা','বাকি','অবস্থা'],fees.map(f=>[f.description,money(f.amount),money(f.paid_amount),money(Number(f.amount)-Number(f.paid_amount),),f.status]));
+      addTable('উপস্থিতি',['তারিখ','অবস্থা','নোট'],attendance.map(a=>[a.attendance_date,a.status,a.note||'—']));
       addTable('পরীক্ষার ফলাফল',['পরীক্ষা','বিষয়','নম্বর','পূর্ণমান'],results.map(r=>[r.exam_name,r.subject,r.marks,r.max_marks]));
+      addTable('ক্লাস রুটিন',['দিন','পিরিয়ড','বিষয়','সময়','রুম'],(item.timetable||[]).map(t=>[t.weekday,t.period,t.subject,[t.starts_at,t.ends_at].filter(Boolean).join('–')||'—',t.room||'—']));
       const homework=document.createElement('p');homework.textContent='হোমওয়ার্ক: '+((item.homework||[]).map(h=>h.title+' ('+h.subject+')').join(' · ')||'কোনো হোমওয়ার্ক নেই');card.appendChild(homework);
       container.appendChild(card);
     });
