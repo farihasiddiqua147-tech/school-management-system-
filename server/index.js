@@ -491,7 +491,6 @@ app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
   const from=String(req.query.from||''),to=String(req.query.to||'');
   if((from&&!isRealIsoDate(from))||(to&&!isRealIsoDate(to)))return fail(res,400,'Use valid YYYY-MM-DD dates for report filters');
   if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
-  if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
   const invoiceWhere=[],paymentWhere=[],expenseWhere=[],invoiceArgs=[],paymentArgs=[],expenseArgs=[];
   if(from){
     invoiceWhere.push('created_at>=?');invoiceArgs.push(from+' 00:00:00');
