@@ -374,7 +374,7 @@ app.get('/api/homework',auth,(req,res)=>{
     if(!classes.length)return res.json({homework:[]});
     return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name IN ('+classes.map(()=>'?').join(',')+') ORDER BY due_date DESC LIMIT 300').all(...classes)});
   }
-  if(!['admin','accountant'].includes(req.user.role))return fail(res,403,'Insufficient permission');
+  if(req.user.role!=='admin')return fail(res,403,'Insufficient permission');
   res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()});
 });
 app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
