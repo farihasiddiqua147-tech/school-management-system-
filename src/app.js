@@ -116,6 +116,11 @@ function gatewayFieldsForProvider(provider) {
   return provider === 'bkash' ? ['appKey','appSecret','username','password'] : ['merchantPrivateKey','pgPublicKey'];
 }
 
+$('teacherForm').addEventListener('submit',async e=>{
+ e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+ try{const result=await api('/api/staff',{method:'POST',body:JSON.stringify(data)});e.currentTarget.reset();toast('শিক্ষক অ্যাকাউন্ট তৈরি হয়েছে: '+result.staff.name);}
+ catch(error){toast(error.message);}
+});
 $('settingsForm').addEventListener('submit', async e => {
   e.preventDefault();
   try {
