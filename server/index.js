@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -39,6 +40,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_fee_payments_fee ON fee_payments(fee_id, created_at);
 `);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payment_gateway_settings (
+    provider TEXT PRIMARY KEY CHECK(provider IN ('bkash','nagad')),
+    merchant_id TEXT NOT NULL DEFAULT '',
+    encrypted_credentials TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 app.use(helmet());
 app.use(cors({ origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map(s => s.trim()) }));
 app.use(express.json({ limit: '100kb' }));
@@ -94,6 +105,70 @@ app.put('/api/settings',auth,allow('admin'),validateBody,(req,res)=>{
   const tx=db.transaction(()=>{ for(const key of allowed) if(req.body[key]!==undefined) save.run(key,String(req.body[key]).slice(0,2000)); }); tx();
   res.json({ok:true,settings:Object.fromEntries(db.prepare('SELECT key,value FROM settings').all().map(r=>[r.key,r.value]))});
 });
+  
+// Payment gateway credentials are encrypted at rest and never returned by the read API.
+const paymentConfigKey = crypto.createHash('sha256').update(JWT_SECRET + '|payment-gateway-config-v1').digest();
+function encryptPaymentCredentials(value) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', paymentConfigKey, iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
+  return [iv.toString('base64'), cipher.getAuthTag().toString('base64'), encrypted.toString('base64')].join('.');
+}
+function decryptPaymentCredentials(value) {
+  if (!value) return {};
+  const [iv, tag, encrypted] = value.split('.');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', paymentConfigKey, Buffer.from(iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(tag, 'base64'));
+  return JSON.parse(Buffer.concat([decipher.update(Buffer.from(encrypted, 'base64')), decipher.final()]).toString('utf8'));
+}
+const gatewayFields = {
+  bkash: ['appKey','appSecret','username','password'],
+  nagad: ['merchantPrivateKey','pgPublicKey']
+};
+app.get('/api/payment-gateways', auth, allow('admin'), (req,res) => {
+  const rows = db.prepare('SELECT provider,merchant_id,encrypted_credentials,enabled,updated_at FROM payment_gateway_settings').all();
+  const gateways = {};
+  for (const provider of ['bkash','nagad']) {
+    const row = rows.find(r => r.provider === provider);
+    let credentials = {};
+    try { credentials = row ? decryptPaymentCredentials(row.encrypted_credentials) : {}; } catch { return fail(res,500,'Payment settings could not be decrypted. Check the server secret configuration.'); }
+    gateways[provider] = {
+      merchantId: row ? row.merchant_id : '',
+      enabled: !!(row && row.enabled),
+      configured: !!(row && row.merchant_id && gatewayFields[provider].every(key => !!credentials[key])),
+      credentialStatus: Object.fromEntries(gatewayFields[provider].map(key => [key, !!credentials[key]])),
+      updatedAt: row ? row.updated_at : null
+    };
+  }
+  res.json({gateways});
+});
+app.put('/api/payment-gateways/:provider', auth, allow('admin'), validateBody, (req,res) => {
+  const provider = String(req.params.provider || '').toLowerCase();
+  if (!gatewayFields[provider]) return fail(res,400,'Unsupported payment provider');
+  const merchantId = String(req.body.merchantId || '').trim().slice(0,120);
+  const enabled = req.body.enabled === true ? 1 : 0;
+  const supplied = req.body.credentials && typeof req.body.credentials === 'object' && !Array.isArray(req.body.credentials) ? req.body.credentials : {};
+  const existing = db.prepare('SELECT encrypted_credentials FROM payment_gateway_settings WHERE provider=?').get(provider);
+  let credentials = {};
+  try { credentials = existing ? decryptPaymentCredentials(existing.encrypted_credentials) : {}; }
+  catch { return fail(res,500,'Saved payment credentials could not be decrypted. Check the server secret configuration.'); }
+  for (const key of gatewayFields[provider]) {
+    if (supplied[key] !== undefined && String(supplied[key]).trim()) {
+      if (String(supplied[key]).length > 12000) return fail(res,400,'Credential value is too long');
+      credentials[key] = String(supplied[key]);
+    }
+  }
+  if (enabled && (!merchantId || !gatewayFields[provider].every(key => !!credentials[key]))) {
+    return fail(res,400,'Merchant ID and all required credentials must be saved before enabling this configuration');
+  }
+  const encrypted = encryptPaymentCredentials(credentials);
+  db.prepare(`INSERT INTO payment_gateway_settings(provider,merchant_id,encrypted_credentials,enabled,updated_at)
+    VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+    ON CONFLICT(provider) DO UPDATE SET merchant_id=excluded.merchant_id,encrypted_credentials=excluded.encrypted_credentials,enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP`)
+    .run(provider,merchantId,encrypted,enabled);
+  res.json({ok:true,message:'Payment gateway settings saved securely. Live checkout still requires provider API integration and callback verification.'});
+});
+
 
 app.get('/api/dashboard',auth,(req,res)=>{
   const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
