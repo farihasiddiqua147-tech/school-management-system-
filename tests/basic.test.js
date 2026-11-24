@@ -126,3 +126,14 @@ test('marksheet access verifies the exam class and teacher assignment', () => {
   assert.match(route, /student\.class_name!==exam\.class_name/);
   assert.match(route, /teacherCanAccessClass\(req\.user\.id,student\.class_name\)/);
 });
+
+
+test('marksheet GPA is zero if any subject grade is a fail', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  const route = source.slice(source.indexOf("app.get('/api/reports/marksheet'"), source.indexOf("app.get('/api/reports/fees'"));
+  assert.match(route, /const failed=enriched\.some\(s=>s\.letter==='F'\)/);
+  assert.match(route, /const gpa=failed\?0:/);
+  assert.match(route, /grade:failed\?'F':gradePoint\(percentage\)\.letter/);
+});
