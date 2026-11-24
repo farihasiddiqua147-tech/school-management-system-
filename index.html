@@ -97,6 +97,17 @@
         </div>
 
         <div class="panel">
+          <div class="panel-head"><div><h3>শিক্ষক অ্যাকাউন্ট তৈরি</h3><p>শিক্ষকের লগইন তৈরি করে টিচার প্যানেলে প্রবেশের সুযোগ দিন</p></div></div>
+          <form id="teacherForm" class="form-grid">
+            <label>শিক্ষকের নাম<input name="name" required /></label>
+            <label>পদবি/বিষয়<input name="designation" required placeholder="যেমন: বাংলা শিক্ষক" /></label>
+            <label>লগইন ইমেইল<input name="email" type="email" required /></label>
+            <label>অস্থায়ী পাসওয়ার্ড<input name="password" type="password" minlength="12" required autocomplete="new-password" /></label>
+            <label>ফোন নম্বর<input name="phone" /></label>
+            <div class="form-actions"><button class="primary" type="submit">শিক্ষক অ্যাকাউন্ট তৈরি</button></div>
+          </form>
+        </div>
+        <div class="panel">
           <div class="panel-head"><div><h3>পেমেন্ট গেটওয়ে সেটিংস</h3><p>অ্যাডমিন পরে bKash ও Nagad মার্চেন্ট তথ্য যুক্ত বা পরিবর্তন করতে পারবেন</p></div><span class="pill">Admin only</span></div>
           <form id="gatewayForm" class="form-grid settings-grid">
             <label>পেমেন্ট মাধ্যম<select id="gatewayProvider" name="provider"><option value="bkash">bKash</option><option value="nagad">Nagad</option></select></label>
