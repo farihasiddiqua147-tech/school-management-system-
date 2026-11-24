@@ -205,16 +205,16 @@ async function refreshStudents() {
 async function loadStudentPortal() {
   const data=await api('/api/student/me'), st=data.student;
   $('studentProfile').textContent=`${st.name} · ${st.class_name} · রোল ${st.roll} · আইডি ${st.student_code||st.id}`;
-  const attendance=data.attendance||[], present=attendance.filter(x=>['present','late'].includes(x.status)).length;
-  $('studentAttendanceRate').textContent=attendance.length?Math.round(present/attendance.length*100)+'%':'—';
-  const fees=data.fees||[], due=fees.reduce((n,f)=>n+Math.max(0,Number(f.amount)-Number(f.paid_amount)),0);
+  const attendanceRecords=data.attendance||[], present=attendanceRecords.filter(x=>['present','late'].includes(x.status)).length;
+  $('studentAttendanceRate').textContent=attendanceRecords.length?Math.round(present/attendanceRecords.length*100)+'%':'—';
+  const feeRecords=data.fees||[], due=feeRecords.reduce((n,f)=>n+Math.max(0,Number(f.amount)-Number(f.paid_amount)),0);
   $('studentDueTotal').textContent=money(due);
   const resultsForAverage=data.results||[], averageMax=resultsForAverage.reduce((n,r)=>n+Number(r.max_marks||0),0),averageMarks=resultsForAverage.reduce((n,r)=>n+Number(r.marks||0),0);
   $('studentAverage').textContent=averageMax?Math.round(averageMarks/averageMax*100)+'%':'—';
-  const fees=$('studentFeeRows');fees.innerHTML='';
-  (data.fees||[]).forEach(f=>{const tr=document.createElement('tr');[f.description,money(f.amount),money(f.paid_amount),money(Number(f.amount)-Number(f.paid_amount)),f.status==='paid'?'পরিশোধিত':f.status==='partial'?'আংশিক':'বকেয়া'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});fees.appendChild(tr);});
+  const feeTable=$('studentFeeRows');feeTable.innerHTML='';
+  (data.fees||[]).forEach(f=>{const tr=document.createElement('tr');[f.description,money(f.amount),money(f.paid_amount),money(Number(f.amount)-Number(f.paid_amount)),f.status==='paid'?'পরিশোধিত':f.status==='partial'?'আংশিক':'বকেয়া'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});feeTable.appendChild(tr);});
   const results=$('studentResultRows');results.innerHTML='';(data.results||[]).forEach(r=>{const tr=document.createElement('tr');[r.exam_name,r.subject,r.marks,r.max_marks].forEach(v=>{const td=document.createElement('td');td.textContent=v??'—';tr.appendChild(td);});results.appendChild(tr);});
-  const attendance=$('studentAttendanceRows');attendance.innerHTML='';(data.attendance||[]).forEach(r=>{const tr=document.createElement('tr');[r.attendance_date,r.status,r.note||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});attendance.appendChild(tr);});
+  const attendanceTable=$('studentAttendanceRows');attendanceTable.innerHTML='';(data.attendance||[]).forEach(r=>{const tr=document.createElement('tr');[r.attendance_date,r.status,r.note||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});attendanceTable.appendChild(tr);});
   $('studentHomework').textContent=(data.homework||[]).map(h=>h.title+' · '+h.subject+' · '+(h.due_date||'তারিখ নেই')).join(' | ')||'এখনো কোনো হোমওয়ার্ক নেই';
   const routine=$('studentRoutineRows');routine.innerHTML='';(data.timetable||[]).forEach(r=>{const tr=document.createElement('tr');[r.weekday,r.period,r.subject,[r.starts_at,r.ends_at].filter(Boolean).join('–')||'—',r.room||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});routine.appendChild(tr);});
 }
