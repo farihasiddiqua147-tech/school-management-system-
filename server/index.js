@@ -204,6 +204,7 @@ app.get('/api/reports/fees',auth,allow('admin','accountant'),(req,res)=>{
 // Serve the frontend from the same origin as the API so login works without CORS setup.
 const publicRoot = path.resolve(__dirname, '..');
 app.get('/', (req,res) => res.sendFile(path.join(publicRoot, 'index.html')));
+app.get('/index.html', (req,res) => res.sendFile(path.join(publicRoot, 'index.html')));
 app.get('/login.html', (req,res) => res.sendFile(path.join(publicRoot, 'login.html')));
 app.use('/src', express.static(path.join(publicRoot, 'src'), { dotfiles: 'deny', index: false }));
 
