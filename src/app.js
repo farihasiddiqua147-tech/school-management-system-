@@ -55,9 +55,9 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',expenses:'আয়-ব্যয়',notices:'নোটিশ',reports:'মার্কশিট রিপোর্ট',settings:'অ্যাডমিন সেটিংস'})[view];
+  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',guardianPortal:'অভিভাবক প্যানেল',fees:'বেতন ও ফি',expenses:'আয়-ব্যয়',notices:'নোটিশ',reports:'মার্কশিট রিপোর্ট',settings:'অ্যাডমিন সেটিংস'})[view];
 }
-document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'expenses') loadExpenses(); if (btn.dataset.view === 'notices') loadNotices(); if (btn.dataset.view === 'reports') loadReportOptions(); }));
+document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'expenses') loadExpenses(); if (btn.dataset.view === 'guardianPortal') loadGuardianPortal(); if (btn.dataset.view === 'notices') loadNotices(); if (btn.dataset.view === 'reports') loadReportOptions(); }));
 document.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.go)));
 const logout = document.createElement('button');
 logout.className = 'secondary'; logout.textContent = 'লগআউট'; logout.style.marginLeft = '12px';
@@ -66,11 +66,13 @@ document.querySelector('.topbar').appendChild(logout);
 const adminOnly = user.role === 'admin';
 const studentOnly = user.role === 'student';
 const teacherOnly = user.role === 'teacher';
+const guardianOnly = user.role === 'guardian';
 document.querySelectorAll('[data-view="studentPortal"]').forEach(el=>el.classList.toggle('hidden',!studentOnly));
 document.querySelectorAll('[data-view="teacherPortal"]').forEach(el=>el.classList.toggle('hidden',!teacherOnly));
+document.querySelectorAll('[data-view="guardianPortal"]').forEach(el=>el.classList.toggle('hidden',!guardianOnly));
 document.querySelectorAll('[data-view="reports"]').forEach(el=>el.classList.toggle('hidden',!['admin','teacher'].includes(user.role)));
-document.querySelectorAll('[data-view="students"]').forEach(el=>el.classList.toggle('hidden',studentOnly));
-document.querySelectorAll('[data-view="dashboard"]').forEach(el=>el.classList.toggle('hidden',studentOnly||teacherOnly));
+document.querySelectorAll('[data-view="students"]').forEach(el=>el.classList.toggle('hidden',studentOnly||guardianOnly));
+document.querySelectorAll('[data-view="dashboard"]').forEach(el=>el.classList.toggle('hidden',studentOnly||teacherOnly||guardianOnly));
 document.querySelectorAll('[data-view="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 const financeRole = ['admin','accountant'].includes(user.role);
 const studentManagementRole = ['admin','teacher'].includes(user.role);
@@ -336,6 +338,38 @@ async function loadStudentPortal() {
   $('studentHomework').textContent=(data.homework||[]).map(h=>h.title+' · '+h.subject+' · '+(h.due_date||'তারিখ নেই')).join(' | ')||'এখনো কোনো হোমওয়ার্ক নেই';
   const routine=$('studentRoutineRows');routine.innerHTML='';(data.timetable||[]).forEach(r=>{const tr=document.createElement('tr');[r.weekday,r.period,r.subject,[r.starts_at,r.ends_at].filter(Boolean).join('–')||'—',r.room||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});routine.appendChild(tr);});
 }
+async function loadGuardianPortal() {
+  const container=$('guardianChildren');container.replaceChildren();
+  try {
+    const data=await api('/api/guardian/me');
+    const children=data.children||[];
+    if(!children.length){const p=document.createElement('p');p.className='empty';p.textContent='আপনার অ্যাকাউন্টের সঙ্গে কোনো সক্রিয় শিক্ষার্থীর প্রোফাইল যুক্ত নেই। স্কুলের অ্যাডমিনের সঙ্গে যোগাযোগ করুন।';container.appendChild(p);return;}
+    children.forEach(item=>{
+      const st=item.student,card=document.createElement('article');card.className='panel';
+      const heading=document.createElement('h3');heading.textContent=st.name+' · '+st.class_name+' · রোল '+st.roll;
+      const meta=document.createElement('p');meta.className='muted';meta.textContent='শিক্ষার্থী আইডি: '+(st.student_code||st.id);
+      const attendance=item.attendance||[],fees=item.fees||[],results=item.results||[];
+      const due=fees.reduce((sum,f)=>sum+Math.max(0,Number(f.amount)-Number(f.paid_amount)),0);
+      const summary=document.createElement('p');summary.textContent='উপস্থিতির রেকর্ড: '+attendance.length+' · মোট বকেয়া: '+money(due);
+      card.append(heading,meta,summary);
+      const addTable=(title,headers,rows)=>{
+        const h=document.createElement('h4');h.textContent=title;card.appendChild(h);
+        const wrap=document.createElement('div');wrap.className='table-wrap';const table=document.createElement('table'),thead=document.createElement('thead'),trh=document.createElement('tr');
+        headers.forEach(v=>{const th=document.createElement('th');th.textContent=v;trh.appendChild(th);});thead.appendChild(trh);table.appendChild(thead);
+        const tbody=document.createElement('tbody');
+        rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(v=>{const td=document.createElement('td');td.textContent=String(v??'—');tr.appendChild(td);});tbody.appendChild(tr);});
+        if(!rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=headers.length;td.textContent='কোনো তথ্য নেই';tr.appendChild(td);tbody.appendChild(tr);}
+        table.appendChild(tbody);wrap.appendChild(table);card.appendChild(wrap);
+      };
+      addTable('ফি ও বকেয়া',['বিবরণ','ধার্য','জমা','বাকি','অবস্থা'],fees.map(f=>[f.description,money(f.amount),money(f.paid_amount),money(Number(f.amount)-Number(f.paid_amount),),f.status]));
+      addTable('পরীক্ষার ফলাফল',['পরীক্ষা','বিষয়','নম্বর','পূর্ণমান'],results.map(r=>[r.exam_name,r.subject,r.marks,r.max_marks]));
+      const homework=document.createElement('p');homework.textContent='হোমওয়ার্ক: '+((item.homework||[]).map(h=>h.title+' ('+h.subject+')').join(' · ')||'কোনো হোমওয়ার্ক নেই');card.appendChild(homework);
+      container.appendChild(card);
+    });
+  } catch(error){const p=document.createElement('p');p.className='empty';p.textContent=error.message;container.appendChild(p);}
+}
+$('refreshGuardian').addEventListener('click',loadGuardianPortal);
+
 async function loadTeacherPortal() {
   const data=await api('/api/teacher/me');
   $('teacherProfile').textContent=data.teacher.name+' · '+data.teacher.designation;
@@ -385,6 +419,7 @@ async function init() {
     renderSettings();
     if (studentOnly) { document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden')); $('studentPortalView').classList.remove('hidden'); $('pageTitle').textContent='আমার প্যানেল'; await loadStudentPortal(); return; }
     if (teacherOnly) { document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden')); $('teacherPortalView').classList.remove('hidden'); $('pageTitle').textContent='টিচার প্যানেল'; await loadTeacherPortal(); await refreshStudents(); return; }
+    if (guardianOnly) { document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden')); $('guardianPortalView').classList.remove('hidden'); $('pageTitle').textContent='অভিভাবক প্যানেল'; await loadGuardianPortal(); return; }
     await refreshStudents();
     if (!adminOnly) $('settingsView').classList.add('hidden');
     if (financeRole) await loadFees();
