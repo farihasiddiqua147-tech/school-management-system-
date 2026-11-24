@@ -231,9 +231,34 @@ app.post('/api/timetable',auth,allow('admin'),validateBody,(req,res)=>{
 
 
 app.get('/api/dashboard',auth,(req,res)=>{
-  const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
-  const outstanding=db.prepare("SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE status!='paid'").get().amount;
-  res.json({students:count('students'),staff:count('staff'),exams:count('exams'),notices:count('notices'),outstandingFees:outstanding});
+  const role=req.user.role;
+  const publishedNotices=db.prepare('SELECT COUNT(*) n FROM notices WHERE published=1 AND audience IN (?,?)').get('all',role).n;
+  if(role==='admin'||role==='accountant'){
+    const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
+    const outstanding=db.prepare("SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE status!='paid'").get().amount;
+    return res.json({students:count('students'),staff:count('staff'),exams:count('exams'),notices:publishedNotices,outstandingFees:outstanding});
+  }
+  if(role==='teacher'){
+    const classes=teacherClassNames(req.user.id);
+    if(!classes.length)return res.json({students:0,staff:0,exams:0,notices:publishedNotices,classes:[]});
+    const marks=classes.map(()=>'?').join(',');
+    const students=db.prepare('SELECT COUNT(*) n FROM students WHERE status=\'active\' AND class_name IN ('+marks+')').get(...classes).n;
+    const exams=db.prepare('SELECT COUNT(*) n FROM exams WHERE class_name IN ('+marks+')').get(...classes).n;
+    return res.json({students,staff:1,exams,notices:publishedNotices,classes});
+  }
+  if(role==='student'){
+    const student=db.prepare("SELECT id,class_name FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+    if(!student)return res.json({students:0,staff:0,exams:0,notices:publishedNotices});
+    const exams=db.prepare('SELECT COUNT(*) n FROM exams WHERE class_name=?').get(student.class_name).n;
+    const due=db.prepare('SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE student_id=?').get(student.id).amount;
+    return res.json({students:1,staff:0,exams,notices:publishedNotices,outstandingFees:due});
+  }
+  const children=db.prepare("SELECT id,class_name FROM students WHERE guardian_user_id=? AND status='active'").all(req.user.id);
+  if(!children.length)return res.json({students:0,staff:0,exams:0,notices:publishedNotices,outstandingFees:0});
+  const classes=[...new Set(children.map(x=>x.class_name))],marks=children.map(()=>'?').join(',');
+  const exams=db.prepare('SELECT COUNT(*) n FROM exams WHERE class_name IN ('+classes.map(()=>'?').join(',')+')').get(...classes).n;
+  const due=db.prepare('SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE student_id IN ('+marks+')').get(...children.map(x=>x.id)).amount;
+  res.json({students:children.length,staff:0,exams,notices:publishedNotices,outstandingFees:due});
 });
 app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(req,res)=>{
   const {className,status='active',q=''}=req.query;
