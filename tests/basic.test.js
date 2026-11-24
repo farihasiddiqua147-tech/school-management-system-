@@ -12,3 +12,12 @@ test('percentage handles numeric marks', () => {
   assert.equal((75 / 100) * 100, 75);
   assert.equal((45 / 60) * 100, 75);
 });
+
+const { validateStudentLogin } = require('../server/student-validation');
+
+test('student creation requires a valid login email and password', () => {
+  assert.match(validateStudentLogin('', 'long-enough-password'), /valid email/i);
+  assert.match(validateStudentLogin('not-an-email', 'long-enough-password'), /valid email/i);
+  assert.match(validateStudentLogin('student@example.com', 'short'), /12 characters/i);
+  assert.equal(validateStudentLogin('student@example.com', 'a-secure-password'), null);
+});
