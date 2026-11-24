@@ -22,6 +22,23 @@ const db = new Database(dbFile);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+// Idempotent fee-module migrations for existing SQLite databases.
+const feeColumns = db.prepare("PRAGMA table_info(fees)").all().map(c => c.name);
+if (!feeColumns.includes('fee_type')) db.exec("ALTER TABLE fees ADD COLUMN fee_type TEXT NOT NULL DEFAULT 'other'");
+if (!feeColumns.includes('billing_period')) db.exec("ALTER TABLE fees ADD COLUMN billing_period TEXT");
+db.exec(`
+  CREATE TABLE IF NOT EXISTS fee_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fee_id INTEGER NOT NULL REFERENCES fees(id),
+    receipt_no TEXT NOT NULL UNIQUE,
+    amount REAL NOT NULL CHECK(amount > 0),
+    method TEXT NOT NULL CHECK(method IN ('cash','bank','bkash','nagad')),
+    reference TEXT,
+    received_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_fee_payments_fee ON fee_payments(fee_id, created_at);
+`);
 app.use(helmet());
 app.use(cors({ origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',').map(s => s.trim()) }));
 app.use(express.json({ limit: '100kb' }));
@@ -145,17 +162,46 @@ app.get('/api/results',auth,allow('admin','teacher','student','guardian'),(req,r
  if(req.query.exam_id){sql+=' WHERE r.exam_id=?';args.push(Number(req.query.exam_id));}
  res.json({results:db.prepare(sql+' ORDER BY e.name,s.class_name,s.roll,r.subject LIMIT 2000').all(...args)});
 });
-app.get('/api/fees',auth,allow('admin','accountant','guardian'),(req,res)=>res.json({fees:db.prepare('SELECT f.*,s.name student_name,s.class_name,s.roll FROM fees f JOIN students s ON s.id=f.student_id ORDER BY f.due_date DESC LIMIT 1000').all()}));
+app.get('/api/fees',auth,allow('admin','accountant','guardian','student'),(req,res)=>{
+ let sql='SELECT f.*,s.name student_name,s.class_name,s.roll FROM fees f JOIN students s ON s.id=f.student_id',args=[];
+ if(req.query.student_id){sql+=' WHERE f.student_id=?';args.push(Number(req.query.student_id));}
+ sql+=' ORDER BY f.due_date DESC,f.id DESC LIMIT 1000';
+ res.json({fees:db.prepare(sql).all(...args)});
+});
 app.post('/api/fees',auth,allow('admin','accountant'),validateBody,(req,res)=>{
- const b=req.body;if(!parseId(b.student_id)||!String(b.description||'').trim()||!Number.isFinite(Number(b.amount))||Number(b.amount)<0)return fail(res,400,'Student, description and non-negative amount required');
- const x=db.prepare('INSERT INTO fees(student_id,description,amount,paid_amount,due_date,status) VALUES(?,?,?,?,?,?)').run(b.student_id,b.description,b.amount,b.paid_amount||0,b.due_date||null,Number(b.paid_amount||0)>=Number(b.amount)?'paid':Number(b.paid_amount||0)>0?'partial':'unpaid');
+ const b=req.body, studentId=parseId(b.student_id), amount=Number(b.amount);
+ const types=['monthly_tuition','exam_fee','admission_fee','session_fee','transport_fee','development_fee','other'];
+ const feeType=types.includes(b.fee_type)?b.fee_type:'other';
+ if(!studentId||!String(b.description||'').trim()||!Number.isFinite(amount)||amount<=0)return fail(res,400,'Student, description and positive amount required');
+ const student=db.prepare('SELECT id FROM students WHERE id=?').get(studentId);if(!student)return fail(res,404,'Student not found');
+ const x=db.prepare("INSERT INTO fees(student_id,description,amount,paid_amount,due_date,status,fee_type,billing_period) VALUES(?,?,?,0,?,'unpaid',?,?)").run(studentId,String(b.description).trim(),amount,b.due_date||null,feeType,b.billing_period||null);
  res.status(201).json({fee:db.prepare('SELECT * FROM fees WHERE id=?').get(x.lastInsertRowid)});
 });
+app.get('/api/fees/:id/payments',auth,allow('admin','accountant','guardian','student'),(req,res)=>{
+ const id=parseId(req.params.id);if(!id)return fail(res,400,'Invalid fee id');
+ const fee=db.prepare('SELECT id,student_id FROM fees WHERE id=?').get(id);if(!fee)return fail(res,404,'Fee not found');
+ res.json({payments:db.prepare('SELECT id,receipt_no,amount,method,reference,created_at FROM fee_payments WHERE fee_id=? ORDER BY id DESC').all(id)});
+});
 app.post('/api/fees/:id/payment',auth,allow('admin','accountant'),validateBody,(req,res)=>{
- const id=parseId(req.params.id),amount=Number(req.body.amount);if(!id||!Number.isFinite(amount)||amount<=0)return fail(res,400,'Valid fee id and positive payment amount required');
+ const id=parseId(req.params.id),amount=Number(req.body.amount),method=String(req.body.method||'cash');
+ if(!id||!Number.isFinite(amount)||amount<=0||!['cash','bank','bkash','nagad'].includes(method))return fail(res,400,'Valid fee id, positive amount and payment method required');
  const fee=db.prepare('SELECT * FROM fees WHERE id=?').get(id);if(!fee)return fail(res,404,'Fee not found');
- const paid=Math.min(fee.amount,fee.paid_amount+amount),status=paid>=fee.amount?'paid':paid>0?'partial':'unpaid';
- db.prepare('UPDATE fees SET paid_amount=?,status=? WHERE id=?').run(paid,status,id);res.json({fee:db.prepare('SELECT * FROM fees WHERE id=?').get(id)});
+ const balance=Number((fee.amount-fee.paid_amount).toFixed(2));
+ if(amount>balance+0.001)return fail(res,400,'Payment exceeds the outstanding balance');
+ const receiptNo='RCPT-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+String(Date.now()).slice(-6);
+ const tx=db.transaction(()=>{
+   db.prepare('INSERT INTO fee_payments(fee_id,receipt_no,amount,method,reference,received_by) VALUES(?,?,?,?,?,?)').run(id,receiptNo,amount,method,String(req.body.reference||'').slice(0,100)||null,req.user.id);
+   const paid=Number((fee.paid_amount+amount).toFixed(2)),status=paid>=fee.amount?'paid':paid>0?'partial':'unpaid';
+   db.prepare('UPDATE fees SET paid_amount=?,status=? WHERE id=?').run(paid,status,id);
+ });
+ tx();
+ res.json({ok:true,receipt:{receipt_no:receiptNo,amount,method,created_at:new Date().toISOString()},fee:db.prepare('SELECT * FROM fees WHERE id=?').get(id)});
+});
+// Online checkout remains disabled until verified merchant credentials and provider callbacks are configured.
+app.post('/api/payments/online',auth,validateBody,(req,res)=>{
+ const provider=String(req.body.provider||'');
+ if(!['bkash','nagad'].includes(provider))return fail(res,400,'Unsupported payment provider');
+ return res.status(503).json({error:'Online payment gateway is not configured yet. Please use the school office payment option for now.'});
 });
 app.get('/api/notices',auth,(req,res)=>res.json({notices:db.prepare('SELECT id,title,body,audience,published,created_at FROM notices WHERE published=1 ORDER BY created_at DESC LIMIT 300').all()}));
 app.post('/api/notices',auth,allow('admin','teacher'),validateBody,(req,res)=>{
