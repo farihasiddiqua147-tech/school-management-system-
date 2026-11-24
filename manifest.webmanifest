@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "School Management System",
+  "short_name": "School Manager",
+  "description": "School management portal for administrators, teachers, students and guardians.",
+  "lang": "bn",
+  "start_url": "/login.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f7fa",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
