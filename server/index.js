@@ -453,6 +453,7 @@ app.post('/api/fees/:id/payment',auth,allow('admin','accountant'),validateBody,(
    db.prepare('INSERT INTO fee_payments(fee_id,receipt_no,amount,method,reference,received_by) VALUES(?,?,?,?,?,?)').run(id,receiptNo,amount,method,String(req.body.reference||'').slice(0,100)||null,req.user.id);
    const paid=Number((fee.paid_amount+amount).toFixed(2)),status=paid>=fee.amount?'paid':paid>0?'partial':'unpaid';
    db.prepare('UPDATE fees SET paid_amount=?,status=? WHERE id=?').run(paid,status,id);
+   db.prepare('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,details) VALUES(?,?,?,?,?)').run(req.user.id,'fee.payment_recorded','fee',String(id),JSON.stringify({amount,method,receipt_no:receiptNo}));
  });
  tx();
  res.json({ok:true,receipt:{receipt_no:receiptNo,amount,method,created_at:new Date().toISOString()},fee:db.prepare('SELECT * FROM fees WHERE id=?').get(id)});
@@ -478,8 +479,12 @@ app.post('/api/expenses',auth,allow('admin','accountant'),validateBody,(req,res)
   const parsed=validateExpenseInput(req.body);
   if(parsed.error)return fail(res,400,parsed.error);
   const {category,description,amount,expenseDate,reference}=parsed.value;
-  const x=db.prepare('INSERT INTO expenses(category,description,amount,expense_date,reference,created_by) VALUES(?,?,?,?,?,?)').run(category,description,amount,expenseDate,reference,req.user.id);
-  res.status(201).json({expense:db.prepare('SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses WHERE id=?').get(x.lastInsertRowid)});
+  const create=db.transaction(()=>{
+    const x=db.prepare('INSERT INTO expenses(category,description,amount,expense_date,reference,created_by) VALUES(?,?,?,?,?,?)').run(category,description,amount,expenseDate,reference,req.user.id);
+    db.prepare('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,details) VALUES(?,?,?,?,?)').run(req.user.id,'expense.created','expense',String(x.lastInsertRowid),JSON.stringify({category,amount,expense_date:expenseDate}));
+    return db.prepare('SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses WHERE id=?').get(x.lastInsertRowid);
+  });
+  res.status(201).json({expense:create()});
 });
 app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
   const from=String(req.query.from||''),to=String(req.query.to||'');
