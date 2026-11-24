@@ -62,3 +62,16 @@ test('SQLite student account and profile survive closing and reopening the datab
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test('application refuses DATABASE_URL until PostgreSQL adapter is implemented', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  const guardAt = source.indexOf("if (process.env.DATABASE_URL)");
+  const sqliteOpenAt = source.indexOf('new Database(dbFile)');
+  assert.notEqual(guardAt, -1, 'DATABASE_URL safety guard must exist');
+  assert.notEqual(sqliteOpenAt, -1, 'SQLite initialization must be identifiable');
+  assert.ok(guardAt < sqliteOpenAt, 'DATABASE_URL guard must run before SQLite opens');
+  assert.match(source.slice(guardAt, sqliteOpenAt), /process\.exit\(1\)/);
+});
