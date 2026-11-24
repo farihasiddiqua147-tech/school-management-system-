@@ -335,8 +335,23 @@ app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,
  try{tx();res.json({ok:true,saved:records.length});}catch(e){return fail(res,400,e.message);}
 });
 app.get('/api/homework',auth,(req,res)=>{
- if(req.user.role==='student'){const st=db.prepare('SELECT class_name FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 300').all(st.class_name)});}
- res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()});
+  if(req.user.role==='student'){
+    const st=db.prepare("SELECT class_name FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+    if(!st)return fail(res,404,'Student profile not linked');
+    return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 300').all(st.class_name)});
+  }
+  if(req.user.role==='guardian'){
+    const classes=[...new Set(db.prepare("SELECT class_name FROM students WHERE guardian_user_id=? AND status='active'").all(req.user.id).map(x=>x.class_name))];
+    if(!classes.length)return res.json({homework:[]});
+    return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name IN ('+classes.map(()=>'?').join(',')+') ORDER BY due_date DESC LIMIT 300').all(...classes)});
+  }
+  if(req.user.role==='teacher'){
+    const classes=teacherClassNames(req.user.id);
+    if(!classes.length)return res.json({homework:[]});
+    return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name IN ('+classes.map(()=>'?').join(',')+') ORDER BY due_date DESC LIMIT 300').all(...classes)});
+  }
+  if(!['admin','accountant'].includes(req.user.role))return fail(res,403,'Insufficient permission');
+  res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()});
 });
 app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.class_name||!b.subject||!b.title)return fail(res,400,'Class, subject and title required');
