@@ -31,6 +31,8 @@ The API bootstraps an admin only when the configured admin email does not alread
 - Attendance, timetable, homework and exams
 - Results and exam-wise GPA/marksheet: `GET /api/reports/marksheet?exam_id=...&student_id=...`
 - Fees, office payment records and fee totals
+- Expenses: `GET /api/expenses`, `POST /api/expenses`, and `GET /api/reports/accounting` (admin/accountant only)
+- Guardian self-service: `GET /api/guardian/me` returns only linked active children and their school records
 - Role-targeted notices
 - Student and teacher self-service endpoints
 
@@ -47,9 +49,9 @@ The web frontend is connected to the API for the implemented workflows. Student 
 - **Persistent production database:** the application still uses SQLite. Render's free web-service filesystem can be ephemeral; the PostgreSQL schema file is a draft, not a working PostgreSQL adapter. Do not set `DATABASE_URL` until the adapter and migration are implemented and tested. Back up any real data before changing databases.
 - **SMS and email:** provider integration and credentials are not configured.
 - **Online payments:** bKash/Nagad credential settings are not a live checkout integration. Merchant API calls, signature verification, callbacks and reconciliation are still required.
-- **Accounting:** fee invoices, office payment receipts and fee totals exist; a complete expense ledger and audited financial statements still need implementation.
-- **Remaining web workflows:** full management screens and end-to-end tests are still needed for every role and module, including guardian self-service and administrative attendance/result workflows.
+- **Accounting:** the audit branch adds an expense ledger and a basic income/expense summary. It is not a complete audited accounting system; legacy fee balances without payment-ledger rows are not included in period collections.
+- **Remaining web workflows:** guardian self-service and an expense screen have been added on the audit branch, but all role-specific flows and permissions still require integration and end-to-end testing.
 - **Android:** the current native client is an initial role-based read-only dashboard. It is not yet a complete mobile app for creating/editing attendance, marks, fees, notices and other records. The debug APK is for testing, not Play Store publication.
 - **Release readiness:** verify database backups and restore, audit logging, production security, real-device responsive behavior, all role permissions, and deployment after merge.
 
-Do not use this starter with real student information until production database persistence, backups, permissions and deployment have been independently verified.
+See `docs/PRODUCTION_READINESS.md` for the current blockers. Do not use this starter with real student information until production database persistence, backups, permissions and deployment have been independently verified.
