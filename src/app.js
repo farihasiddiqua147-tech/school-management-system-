@@ -55,9 +55,9 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',settings:'অ্যাডমিন সেটিংস'})[view];
+  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',notices:'নোটিশ',settings:'অ্যাডমিন সেটিংস'})[view];
 }
-document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); }));
+document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'notices') loadNotices(); }));
 document.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.go)));
 const logout = document.createElement('button');
 logout.className = 'secondary'; logout.textContent = 'লগআউট'; logout.style.marginLeft = '12px';
@@ -78,6 +78,34 @@ document.querySelectorAll('.quick-card[data-go="students"]').forEach(el => el.cl
 document.querySelectorAll('.quick-card[data-go="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 document.querySelectorAll('[data-view="fees"]').forEach(el => el.classList.toggle('hidden', !financeRole));
 if (!financeRole) $('feesView').classList.add('hidden');
+
+const noticeCreatePanel = $('noticeCreatePanel');
+const canPublishNotices = ['admin','teacher'].includes(user.role);
+noticeCreatePanel.classList.toggle('hidden', !canPublishNotices);
+async function loadNotices() {
+  const list=$('noticeList');
+  list.replaceChildren();
+  try {
+    const data=await api('/api/notices');
+    const notices=data.notices||[];
+    if(!notices.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='এখনো কোনো নোটিশ নেই।';list.appendChild(empty);return;}
+    notices.forEach(n=>{
+      const card=document.createElement('article');card.className='panel';
+      const heading=document.createElement('h3');heading.textContent=n.title;
+      const body=document.createElement('p');body.textContent=n.body;
+      const meta=document.createElement('small');meta.className='muted';meta.textContent=(n.audience==='all'?'সবার জন্য':n.audience)+' · '+(n.created_at||'');
+      card.append(heading,body,meta);list.appendChild(card);
+    });
+  } catch(error) { const message=document.createElement('p');message.className='empty';message.textContent=error.message;list.appendChild(message); }
+}
+$('refreshNotices').addEventListener('click',loadNotices);
+$('noticeForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!canPublishNotices)return;
+  const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+  try { await api('/api/notices',{method:'POST',body:JSON.stringify(data)});e.currentTarget.reset();toast('নোটিশ প্রকাশ হয়েছে');await loadNotices(); }
+  catch(error){toast(error.message);}
+});
 
 const gatewayForm = $('gatewayForm');
 let gatewayConfigs = {};
