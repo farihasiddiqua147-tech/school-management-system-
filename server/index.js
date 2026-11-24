@@ -458,6 +458,8 @@ app.get('/api/reports/marksheet',auth,allow('admin','teacher','student','guardia
   const student=db.prepare('SELECT id,name,class_name,roll,student_code FROM students WHERE id=?').get(studentId);
   const exam=db.prepare('SELECT id,name,class_name,exam_date,academic_year FROM exams WHERE id=?').get(examId);
   if(!student||!exam)return fail(res,404,'Student or exam not found');
+  if(student.class_name!==exam.class_name)return fail(res,400,'এই পরীক্ষা ও শিক্ষার্থী একই ক্লাসের নয়');
+  if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,student.class_name))return fail(res,403,'এই শিক্ষার্থীর মার্কশিট দেখার অনুমতি নেই');
   const subjects=db.prepare('SELECT subject,marks,max_marks FROM results WHERE exam_id=? AND student_id=? ORDER BY subject').all(examId,studentId);
   if(!subjects.length)return res.json({student,exam,subjects:[],totalMarks:0,totalMaxMarks:0,percentage:0,gpa:0,grade:'N/A'});
   const enriched=subjects.map(s=>({...s,percentage:Number((s.marks/s.max_marks*100).toFixed(2)),...gradePoint(s.marks/s.max_marks*100)}));
