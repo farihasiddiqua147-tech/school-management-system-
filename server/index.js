@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateStudentLogin } = require('./student-validation');
+const { validateExpenseInput } = require('./expense-validation');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -464,12 +465,9 @@ app.get('/api/expenses',auth,allow('admin','accountant'),(req,res)=>{
   res.json({expenses:db.prepare(sql).all(...args)});
 });
 app.post('/api/expenses',auth,allow('admin','accountant'),validateBody,(req,res)=>{
-  const category=String(req.body.category||'').trim().slice(0,80);
-  const description=String(req.body.description||'').trim().slice(0,500);
-  const amount=Number(req.body.amount);
-  const expenseDate=String(req.body.expense_date||new Date().toISOString().slice(0,10));
-  const reference=String(req.body.reference||'').trim().slice(0,100)||null;
-  if(!category||!description||!Number.isFinite(amount)||amount<=0||!/^\\d{4}-\\d{2}-\\d{2}$/.test(expenseDate))return fail(res,400,'Category, description, positive amount and valid expense date are required');
+  const parsed=validateExpenseInput(req.body);
+  if(parsed.error)return fail(res,400,parsed.error);
+  const {category,description,amount,expenseDate,reference}=parsed.value;
   const x=db.prepare('INSERT INTO expenses(category,description,amount,expense_date,reference,created_by) VALUES(?,?,?,?,?,?)').run(category,description,amount,expenseDate,reference,req.user.id);
   res.status(201).json({expense:db.prepare('SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses WHERE id=?').get(x.lastInsertRowid)});
 });
