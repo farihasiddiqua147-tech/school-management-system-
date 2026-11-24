@@ -14,6 +14,7 @@
       <nav>
         <button class="nav-item active" data-view="dashboard">▦ <span>ড্যাশবোর্ড</span></button>
         <button class="nav-item" data-view="students">♙ <span>শিক্ষার্থী</span></button>
+        <button class="nav-item" data-view="fees">৳ <span>বেতন ও ফি</span></button>
         <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
       </nav>
       <div class="sidebar-note"><strong>প্রোটোটাইপ</strong><p>ডেমো ডেটা এই ব্রাউজারেই সংরক্ষিত হয়।</p></div>
@@ -39,6 +40,30 @@
             <div class="form-actions"><button type="button" class="secondary" id="cancelStudent">বাতিল</button><button class="primary" type="submit">সংরক্ষণ করুন</button></div>
           </form>
           <div class="table-wrap"><table><thead><tr><th>নাম</th><th>শ্রেণি</th><th>রোল</th><th>অভিভাবকের ফোন</th></tr></thead><tbody id="studentRows"></tbody></table><p id="emptyStudents" class="empty">এখনও কোনো শিক্ষার্থী যোগ করা হয়নি।</p></div>
+        </div>
+      </section>
+      <section id="feesView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>বেতন ও ফি ব্যবস্থাপনা</h3><p>মাসিক বেতন, পরীক্ষার ফি, ভর্তি ফি ও অন্যান্য পাওনা</p></div><span class="pill">BDT ৳</span></div>
+          <form id="feeForm" class="form-grid">
+            <label>শিক্ষার্থী<select name="student_id" id="feeStudent" required><option value="">শিক্ষার্থী নির্বাচন করুন</option></select></label>
+            <label>ফি-এর ধরন<select name="fee_type" required><option value="monthly_tuition">মাসিক বেতন</option><option value="exam_fee">পরীক্ষার ফি</option><option value="admission_fee">ভর্তি ফি</option><option value="session_fee">সেশন চার্জ</option><option value="transport_fee">পরিবহন ফি</option><option value="development_fee">উন্নয়ন ফি</option><option value="other">অন্যান্য</option></select></label>
+            <label>বিবরণ<input name="description" required placeholder="যেমন: নভেম্বর ২০২৬ বেতন" /></label>
+            <label>টাকার পরিমাণ (৳)<input name="amount" type="number" min="1" step="0.01" required /></label>
+            <label>যে মাস/সময়-এর ফি<input name="billing_period" placeholder="যেমন: নভেম্বর ২০২৬" /></label>
+            <label>জমার শেষ তারিখ<input name="due_date" type="date" /></label>
+            <div class="form-actions"><button class="primary" type="submit">ফি যোগ করুন</button></div>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>ফি ও পেমেন্ট তালিকা</h3><p>বকেয়া, আংশিক ও পরিশোধিত হিসাব</p></div><button class="secondary" id="refreshFees">রিফ্রেশ</button></div>
+          <div class="stats fee-stats">
+            <article class="stat-card"><p>মোট ধার্য</p><strong id="feeTotal">৳0</strong></article>
+            <article class="stat-card"><p>মোট আদায়</p><strong id="feeCollected">৳0</strong></article>
+            <article class="stat-card"><p>মোট বকেয়া</p><strong id="feeDue">৳0</strong></article>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>শিক্ষার্থী</th><th>ফি-এর বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th><th>কাজ</th></tr></thead><tbody id="feeRows"></tbody></table><p id="emptyFees" class="empty">এখনও কোনো ফি যোগ করা হয়নি।</p></div>
+          <p class="notice">বিকাশ/নগদের সরাসরি অনলাইন পেমেন্ট চালু করতে মার্চেন্ট API ও নিরাপদ callback যাচাই যুক্ত করতে হবে। আপাতত এখানে অফিসে পাওয়া পেমেন্টের হিসাব ও রসিদ সংরক্ষণ করা যাবে।</p>
         </div>
       </section>
       <section id="settingsView" class="view hidden">
