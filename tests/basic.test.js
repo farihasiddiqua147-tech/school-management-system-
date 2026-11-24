@@ -116,3 +116,13 @@ test('notices validate audience and only return notices for the signed-in role',
   assert.match(route, /audienceForRole/);
   assert.match(route, /Invalid notice audience/);
 });
+
+
+test('marksheet access verifies the exam class and teacher assignment', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '../server/index.js'), 'utf8');
+  const route = source.slice(source.indexOf("app.get('/api/reports/marksheet'"), source.indexOf("app.get('/api/reports/fees'"));
+  assert.match(route, /student\.class_name!==exam\.class_name/);
+  assert.match(route, /teacherCanAccessClass\(req\.user\.id,student\.class_name\)/);
+});
