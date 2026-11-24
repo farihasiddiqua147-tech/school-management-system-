@@ -482,8 +482,8 @@ app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
     expenseWhere.push('expense_date>=?');expenseArgs.push(from);
   }
   if(to){
-    invoiceWhere.push('created_at<?');invoiceArgs.push(to+' 23:59:59'+'Z');
-    paymentWhere.push('created_at<?');paymentArgs.push(to+' 23:59:59'+'Z');
+    invoiceWhere.push('date(created_at)<=?');invoiceArgs.push(to);
+    paymentWhere.push('date(created_at)<=?');paymentArgs.push(to);
     expenseWhere.push('expense_date<=?');expenseArgs.push(to);
   }
   const invoiceSql='SELECT COALESCE(SUM(amount),0) billed,COALESCE(SUM(amount-paid_amount),0) outstanding FROM fees'+(invoiceWhere.length?' WHERE '+invoiceWhere.join(' AND '):'');
