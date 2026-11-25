@@ -44,4 +44,6 @@ test('SQLite backup utility checks source and backup integrity', () => {
   assert.match(backup, /await source\.backup\(backupPath\)/);
   assert.match(backup, /Backup verified/);
   assert.match(read('package.json'), /"db:backup": "node scripts\/backup-sqlite\.js"/);
+  assert.match(read('scripts/restore-sqlite.js'), /Target already exists; restore will not overwrite any file/);
+  assert.match(read('package.json'), /"db:restore": "node scripts\/restore-sqlite\.js"/);
 });
