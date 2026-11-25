@@ -24,7 +24,7 @@
         <button class="nav-item" data-view="fees">৳ <span>বেতন ও ফি</span></button>
         <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
       </nav>
-      <div class="sidebar-note"><strong>প্রোটোটাইপ</strong><p>ডেমো ডেটা এই ব্রাউজারেই সংরক্ষিত হয়।</p></div>
+      <div class="sidebar-note"><strong>স্কুল পোর্টাল</strong><p>শিক্ষার্থী, উপস্থিতি ও ফি-এর তথ্য সার্ভারের API থেকে লোড হয়।</p></div>
     </aside>
     <main class="main">
       <header class="topbar"><div><p class="eyebrow">SCHOOL MANAGEMENT</p><h1 id="pageTitle">ড্যাশবোর্ড</h1></div><div class="admin-chip"><span class="avatar">A</span><span><b>Admin</b><small>Administrator</small></span></div></header>
@@ -96,6 +96,21 @@
           <div class="table-wrap"><table><thead><tr><th>শিক্ষার্থী</th><th>ফি-এর বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th><th>কাজ</th></tr></thead><tbody id="feeRows"></tbody></table><p id="emptyFees" class="empty">এখনও কোনো ফি যোগ করা হয়নি।</p></div>
           <p class="notice">বিকাশ/নগদের সরাসরি অনলাইন পেমেন্ট চালু করতে মার্চেন্ট API ও নিরাপদ callback যাচাই যুক্ত করতে হবে। আপাতত এখানে অফিসে পাওয়া পেমেন্টের হিসাব ও রসিদ সংরক্ষণ করা যাবে।</p>
         </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>হিসাবের লেজার</h3><p>নির্দিষ্ট সময় বা শিক্ষার্থী অনুযায়ী জমা পেমেন্ট ও রসিদ দেখুন</p></div><button class="secondary" id="refreshLedger" type="button">রিফ্রেশ</button></div>
+          <form id="ledgerFilter" class="form-grid">
+            <label>শুরুর তারিখ<input id="ledgerFrom" name="from" type="date" /></label>
+            <label>শেষ তারিখ<input id="ledgerTo" name="to" type="date" /></label>
+            <label>শিক্ষার্থী<select id="ledgerStudent" name="student_id"><option value="">সব শিক্ষার্থী</option></select></label>
+            <div class="form-actions"><button class="primary" type="submit">হিসাব দেখুন</button></div>
+          </form>
+          <div class="stats fee-stats">
+            <article class="stat-card"><p>মোট পেমেন্ট</p><strong id="ledgerPaymentCount">0</strong></article>
+            <article class="stat-card"><p>মোট আদায়</p><strong id="ledgerCollected">৳0</strong></article>
+            <article class="stat-card"><p>মাধ্যমভিত্তিক হিসাব</p><strong id="ledgerMethods">—</strong></article>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>রসিদ নম্বর</th><th>শিক্ষার্থী</th><th>ফি</th><th>মাধ্যম</th><th>টাকা</th><th>রসিদ</th></tr></thead><tbody id="ledgerRows"></tbody></table><p id="emptyLedger" class="empty">কোনো পেমেন্ট রেকর্ড পাওয়া যায়নি।</p></div>
+        </div>
       </section>
       <section id="settingsView" class="view hidden">
         <div class="panel"><div class="panel-head"><div><h3>স্কুল প্রোফাইল ও সেটিংস</h3><p>এই তথ্যগুলো পরে যেকোনো সময় পরিবর্তন করতে পারবেন</p></div><span class="pill">Admin</span></div>
@@ -108,7 +123,7 @@
             <label>বর্তমান শিক্ষাবর্ষ<input name="academicYear" required type="number" min="2000" max="2100" /></label>
             <div class="form-actions"><button type="reset" class="secondary">রিসেট ফর্ম</button><button type="submit" class="primary">সেটিংস সংরক্ষণ</button></div>
           </form>
-          <p class="notice">নোট: এই ডেমোতে সেটিংস আপনার বর্তমান ব্রাউজারে থাকে। বহু ব্যবহারকারীর জন্য চালু করতে ব্যাকএন্ড ও ডেটাবেস যুক্ত করতে হবে।</p>
+          <p class="notice">স্কুলের সেটিংস লগইন করা অ্যাডমিনের মাধ্যমে সার্ভারে সংরক্ষিত হয়। পরিবর্তন সংরক্ষণের পর অন্য অনুমোদিত ব্যবহারকারীরাও আপডেট দেখতে পারবেন।</p>
         </div>
 
         <div class="panel">

@@ -135,9 +135,17 @@ $('showStudentForm').addEventListener('click', () => $('studentForm').classList.
 $('cancelStudent').addEventListener('click', () => { $('studentForm').reset(); $('studentForm').classList.add('hidden'); });
 function money(value) { return '৳' + Number(value || 0).toLocaleString('en-BD',{maximumFractionDigits:2}); }
 function fillFeeStudents() {
-  const select=$('feeStudent'); if(!select)return;
-  select.innerHTML='<option value="">শিক্ষার্থী নির্বাচন করুন</option>';
-  students.forEach(st=>{const o=document.createElement('option');o.value=st.id;o.textContent=`${st.name} — ${st.class_name}, রোল ${st.roll}`;select.appendChild(o);});
+  const feeSelect=$('feeStudent');
+  const ledgerSelect=$('ledgerStudent');
+  if(feeSelect) feeSelect.innerHTML='<option value="">শিক্ষার্থী নির্বাচন করুন</option>';
+  if(ledgerSelect) ledgerSelect.innerHTML='<option value="">সব শিক্ষার্থী</option>';
+  students.forEach(st=>{
+    const label=st.name+' — '+st.class_name+', রোল '+st.roll;
+    [feeSelect,ledgerSelect].forEach(select=>{
+      if(!select)return;
+      const option=document.createElement('option');option.value=st.id;option.textContent=label;select.appendChild(option);
+    });
+  });
 }
 function renderFees(fees) {
   const total=fees.reduce((n,f)=>n+Number(f.amount),0), collected=fees.reduce((n,f)=>n+Number(f.paid_amount),0);
@@ -159,9 +167,47 @@ function renderFees(fees) {
 }
 async function loadFees() {
   if(!financeRole)return;
-  try { const [feeResult]=await Promise.all([api('/api/fees')]); renderFees(feeResult.fees||[]); }
+  try { const feeResult=await api('/api/fees'); renderFees(feeResult.fees||[]); }
   catch(error){toast(error.message);}
+  await loadFeeLedger();
 }
+async function loadFeeLedger() {
+  if(!financeRole)return;
+  try {
+    const params=new URLSearchParams();
+    const from=$('ledgerFrom').value,to=$('ledgerTo').value,studentId=$('ledgerStudent').value;
+    if(from)params.set('from',from);
+    if(to)params.set('to',to);
+    if(studentId)params.set('student_id',studentId);
+    const suffix=params.toString()?'?'+params.toString():'';
+    const result=await api('/api/reports/fee-ledger'+suffix);
+    $('ledgerPaymentCount').textContent=Number(result.total.payment_count||0).toLocaleString('en-BD');
+    $('ledgerCollected').textContent=money(result.total.collected);
+    const methodNames={cash:'নগদ',bank:'ব্যাংক',bkash:'বিকাশ',nagad:'নগদ'};
+    $('ledgerMethods').textContent=(result.byMethod||[]).map(row=>methodNames[row.method]||row.method).join(' · ')||'—';
+    const body=$('ledgerRows');body.innerHTML='';
+    const payments=result.payments||[];
+    $('emptyLedger').classList.toggle('hidden',payments.length>0);
+    payments.forEach(payment=>{
+      const tr=document.createElement('tr');
+      [payment.created_at,payment.receipt_no,payment.student_name,payment.description,payment.method,money(payment.amount)].forEach(value=>{
+        const td=document.createElement('td');td.textContent=value??'—';tr.appendChild(td);
+      });
+      const action=document.createElement('td'),button=document.createElement('button');
+      button.className='secondary';button.textContent='দেখুন';
+      button.addEventListener('click',async()=>{
+        try {
+          const data=await api('/api/fees/'+payment.fee_id+'/receipt/'+encodeURIComponent(payment.receipt_no));
+          const r=data.receipt;
+          alert(['রসিদ: '+r.receipt_no,'শিক্ষার্থী: '+r.student_name,'শ্রেণি: '+r.class_name+' · রোল '+r.roll,'ফি: '+r.description,'জমা: '+money(r.amount),'মাধ্যম: '+r.method,'তারিখ: '+r.created_at,'গ্রহণকারী: '+(r.received_by_name||'—')].join(String.fromCharCode(10)));
+        } catch(error){toast(error.message);}
+      });
+      action.appendChild(button);tr.appendChild(action);body.appendChild(tr);
+    });
+  } catch(error){toast(error.message);}
+}
+$('ledgerFilter').addEventListener('submit',event=>{event.preventDefault();loadFeeLedger();});
+$('refreshLedger').addEventListener('click',loadFeeLedger);
 async function recordFeePayment(fee) {
   const remaining=Number(fee.amount)-Number(fee.paid_amount);
   const raw=prompt(`কত টাকা গ্রহণ করা হয়েছে? বাকি: ${money(remaining)}`,String(remaining));
