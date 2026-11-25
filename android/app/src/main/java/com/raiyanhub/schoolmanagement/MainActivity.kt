@@ -21,9 +21,17 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+
+private data class ActionSpec(
+    val title: String,
+    val fields: List<Pair<String, String>>,
+    val endpoint: (Map<String, String>) -> String,
+    val payload: (Map<String, String>) -> JSONObject
+)
 
 class MainActivity : ComponentActivity() {
     private val http by lazy {
@@ -53,6 +61,7 @@ class MainActivity : ComponentActivity() {
             when (method) {
                 "POST" -> builder.post(body ?: "{}".toRequestBody(jsonType))
                 "PUT" -> builder.put(body ?: "{}".toRequestBody(jsonType))
+                "PATCH" -> builder.patch(body ?: "{}".toRequestBody(jsonType))
                 else -> builder.get()
             }
             http.newCall(builder.build()).execute().use { response ->
@@ -94,6 +103,23 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        fun submitAction(spec: ActionSpec, values: Map<String, String>) {
+            scope.launch {
+                busy = true
+                error = null
+                try {
+                    val response = api(spec.endpoint(values), "POST", spec.payload(values), token)
+                    info = response.optString("message").ifBlank { "${spec.title} সফলভাবে সংরক্ষণ হয়েছে।" }
+                    dashboard = api("/api/dashboard", token = token)
+                    rolePanels = loadRolePanels(user?.optString("role").orEmpty(), token)
+                } catch (e: Exception) {
+                    error = e.message ?: "তথ্য সংরক্ষণ করা যায়নি"
+                } finally {
+                    busy = false
+                }
+            }
+        }
+
         LaunchedEffect(token) { if (!token.isNullOrBlank() && user == null) refreshSession() }
 
         MaterialTheme(colorScheme = lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF155EEF))) {
@@ -126,14 +152,26 @@ class MainActivity : ComponentActivity() {
                         }
                         Text("এই অ্যাপটি বিদ্যমান স্কুল সার্ভারের সঙ্গে সংযুক্ত। লগইনের জন্য অ্যাডমিনের দেওয়া অ্যাকাউন্ট ব্যবহার করুন।", style = MaterialTheme.typography.bodySmall)
                     } else {
+                        val role = user?.optString("role", "").orEmpty().lowercase()
                         Text("স্বাগতম, ${user?.optString("name", "ব্যবহারকারী")}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                         InfoCard("আপনার Role", user?.optString("role", "—") ?: "—")
                         InfoCard("অ্যাকাউন্ট", user?.optString("email", "—") ?: "—")
                         InfoCard("সংযোগ", info)
                         Text("সারসংক্ষেপ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(dashboard?.toString(2) ?: "ডেটা লোড হচ্ছে...", style = MaterialTheme.typography.bodySmall)
+                        JsonCard("ড্যাশবোর্ড", dashboard?.toString(2) ?: "ডেটা লোড হচ্ছে...")
                         Text("আপনার প্যানেল", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        rolePanels.forEach { (label, value) -> InfoCard(label, value) }
+                        rolePanels.forEach { (label, value) -> JsonCard(label, value) }
+
+                        val actions = actionSpecs(role)
+                        if (actions.isNotEmpty()) {
+                            Text("দ্রুত কাজ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text("ফর্মের তথ্য সার্ভারে পাঠানো হবে। প্রয়োজনীয় অনুমতি না থাকলে সার্ভার সংরক্ষণ করবে না।", style = MaterialTheme.typography.bodySmall)
+                            actions.forEach { spec ->
+                                ActionForm(spec = spec, enabled = !busy) { submittedSpec, values ->
+                                    submitAction(submittedSpec, values)
+                                }
+                            }
+                        }
                         OutlinedButton(onClick = { refreshSession() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("সব তথ্য রিফ্রেশ") }
                         OutlinedButton(onClick = {
                             prefs.edit().remove("token").apply()
@@ -149,6 +187,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun actionSpecs(role: String): List<ActionSpec> {
+        fun f(key: String, label: String) = key to label
+        fun obj(values: Map<String, String>, vararg keys: String): JSONObject {
+            val result = JSONObject()
+            keys.forEach { key -> values[key]?.trim()?.takeIf { it.isNotEmpty() }?.let { result.put(key, it) } }
+            return result
+        }
+        return when (role) {
+            "admin" -> listOf(
+                ActionSpec("নতুন শিক্ষার্থী যোগ", listOf(f("name","শিক্ষার্থীর নাম"), f("class_name","ক্লাস"), f("roll","রোল"), f("email","লগইন ইমেইল"), f("password","পাসওয়ার্ড (কমপক্ষে ১২ অক্ষর)")),
+                    { "/api/students" }, { v -> obj(v,"name","class_name","roll","email","password") }),
+                ActionSpec("নোটিশ প্রকাশ", listOf(f("title","নোটিশের শিরোনাম"), f("body","নোটিশের বিস্তারিত"), f("audience","কার জন্য: all/admin/teacher/student/guardian/accountant")),
+                    { "/api/notices" }, { v -> obj(v,"title","body","audience").put("published",true) }),
+                ActionSpec("ফি তৈরি", listOf(f("student_id","শিক্ষার্থীর ID"), f("description","ফি-এর বিবরণ"), f("amount","টাকার পরিমাণ"), f("due_date","শেষ তারিখ: YYYY-MM-DD")),
+                    { "/api/fees" }, { v -> obj(v,"student_id","description","amount","due_date") })
+            )
+            "teacher" -> listOf(
+                ActionSpec("উপস্থিতি জমা", listOf(f("date","তারিখ: YYYY-MM-DD"), f("student_id","শিক্ষার্থীর ID"), f("status","present / absent / late / leave"), f("note","মন্তব্য (ঐচ্ছিক)")),
+                    { "/api/attendance/bulk" }, { v ->
+                        val record = obj(v,"student_id","status")
+                        v["note"]?.trim()?.takeIf { it.isNotEmpty() }?.let { record.put("note",it) }
+                        JSONObject().put("date",v["date"]?.trim().orEmpty()).put("records",JSONArray().put(record))
+                    }),
+                ActionSpec("হোমওয়ার্ক যোগ", listOf(f("class_name","ক্লাস (আপনার দায়িত্বপ্রাপ্ত)"), f("subject","বিষয়"), f("title","হোমওয়ার্কের শিরোনাম"), f("description","বিস্তারিত"), f("due_date","শেষ তারিখ: YYYY-MM-DD")),
+                    { "/api/homework" }, { v -> obj(v,"class_name","subject","title","description","due_date") }),
+                ActionSpec("নোটিশ প্রকাশ", listOf(f("title","নোটিশের শিরোনাম"), f("body","নোটিশের বিস্তারিত"), f("audience","কার জন্য: all/teacher/student/guardian")),
+                    { "/api/notices" }, { v -> obj(v,"title","body","audience").put("published",true) })
+            )
+            "accountant" -> listOf(
+                ActionSpec("নতুন ফি তৈরি", listOf(f("student_id","শিক্ষার্থীর ID"), f("description","ফি-এর বিবরণ"), f("amount","টাকার পরিমাণ"), f("due_date","শেষ তারিখ: YYYY-MM-DD")),
+                    { "/api/fees" }, { v -> obj(v,"student_id","description","amount","due_date") }),
+                ActionSpec("পেমেন্ট রেকর্ড ও রসিদ", listOf(f("fee_id","ফি ID"), f("amount","জমা টাকার পরিমাণ"), f("method","cash / bank / bkash / nagad"), f("reference","লেনদেন রেফারেন্স (ঐচ্ছিক)")),
+                    { v -> "/api/fees/${v["fee_id"]?.trim().orEmpty()}/payment" }, { v -> obj(v,"amount","method","reference") })
+            )
+            else -> emptyList()
+        }
+    }
 
     private suspend fun loadRolePanels(role: String, token: String?): Map<String, String> {
         val endpoints = when (role.lowercase()) {
@@ -195,11 +270,47 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
+    private fun ActionForm(spec: ActionSpec, enabled: Boolean, onSubmit: (ActionSpec, Map<String, String>) -> Unit) {
+        var values by remember(spec.title) { mutableStateOf(emptyMap<String, String>()) }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(spec.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                spec.fields.forEach { (key, label) ->
+                    OutlinedTextField(
+                        value = values[key].orEmpty(),
+                        onValueChange = { next -> values = values + (key to next) },
+                        label = { Text(label) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = key !in listOf("body", "description", "note"),
+                        visualTransformation = if (key == "password") PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None
+                    )
+                }
+                Button(
+                    onClick = { onSubmit(spec, values) },
+                    enabled = enabled && spec.fields.filterNot { it.first in listOf("note","description","due_date","reference","audience") }.all { values[it.first].orEmpty().isNotBlank() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (enabled) "সংরক্ষণ করুন" else "অপেক্ষা করুন...") }
+            }
+        }
+    }
+
+    @Composable
     private fun InfoCard(label: String, value: String) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+
+    @Composable
+    private fun JsonCard(label: String, value: String) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(6.dp))
+                Text(value, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

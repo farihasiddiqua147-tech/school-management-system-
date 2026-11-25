@@ -11,4 +11,10 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      - run: node --check scripts/migrate-sqlite-to-postgres.js
+      - run: node scripts/check-postgres-schema-parity.js
+      - run: node --check scripts/sqlite-backup.js
+      - run: node --check server/index.js
+      - run: node --check src/app.js
+      - run: node --check src/login.js
       - run: npm test

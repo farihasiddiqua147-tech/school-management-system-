@@ -9,6 +9,8 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { validateStudentLogin } = require('./student-validation');
+const { validateExpenseInput, isRealIsoDate } = require('./expense-validation');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -16,6 +18,12 @@ const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   console.error('Set JWT_SECRET to a random secret of at least 32 characters in .env');
+  process.exit(1);
+}
+// Fail closed if a PostgreSQL URL is configured before the PostgreSQL adapter is implemented.
+// This prevents a misleading deployment where DATABASE_URL is set but SQLite is still used.
+if (process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is configured, but this application version still uses SQLite. PostgreSQL migration is not complete; refusing to start to avoid writing to the wrong database.');
   process.exit(1);
 }
 const dbFile = path.resolve(process.env.DATABASE_FILE || './data/school.sqlite');
@@ -44,6 +52,19 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS idx_fee_payments_fee ON fee_payments(fee_id, created_at);
+`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL CHECK(amount > 0),
+    expense_date TEXT NOT NULL DEFAULT (date('now')),
+    reference TEXT,
+    created_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date, id);
 `);
 db.exec(`
   CREATE TABLE IF NOT EXISTS payment_gateway_settings (
@@ -183,12 +204,22 @@ app.get('/api/student/me',auth,allow('student'),(req,res)=>{
  const attendance=db.prepare('SELECT attendance_date,status,note FROM attendance WHERE student_id=? ORDER BY attendance_date DESC LIMIT 120').all(student.id);
  const fees=db.prepare('SELECT id,description,fee_type,billing_period,amount,paid_amount,due_date,status FROM fees WHERE student_id=? ORDER BY due_date DESC,id DESC LIMIT 200').all(student.id);
  const homework=db.prepare('SELECT id,subject,title,description,due_date FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 100').all(student.class_name);
- const results=db.prepare('SELECT r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject').all(student.id);
+ const results=db.prepare('SELECT r.exam_id,r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject').all(student.id);
  const timetable=db.prepare('SELECT weekday,period,subject,starts_at,ends_at,room FROM timetable WHERE class_name=? ORDER BY CASE weekday WHEN "Saturday" THEN 1 WHEN "Sunday" THEN 2 WHEN "Monday" THEN 3 WHEN "Tuesday" THEN 4 WHEN "Wednesday" THEN 5 WHEN "Thursday" THEN 6 ELSE 7 END,period').all(student.class_name);
  res.json({student,attendance,fees,homework,results,timetable});
 });
 
 // Teacher self-service panel API, limited to classes associated with the teacher's staff record.
+app.get('/api/guardian/me',auth,allow('guardian'),(req,res)=>{
+ const children=db.prepare("SELECT id,student_code,name,class_name,roll,status FROM students WHERE guardian_user_id=? AND status='active' ORDER BY class_name,CAST(roll AS INTEGER),roll LIMIT 50").all(req.user.id);
+ const getAttendance=db.prepare('SELECT attendance_date,status,note FROM attendance WHERE student_id=? ORDER BY attendance_date DESC LIMIT 120');
+ const getFees=db.prepare('SELECT id,description,fee_type,billing_period,amount,paid_amount,due_date,status FROM fees WHERE student_id=? ORDER BY due_date DESC,id DESC LIMIT 200');
+ const getResults=db.prepare('SELECT r.exam_id,r.subject,r.marks,r.max_marks,e.name AS exam_name,e.exam_date FROM results r JOIN exams e ON e.id=r.exam_id WHERE r.student_id=? ORDER BY e.exam_date DESC,r.subject LIMIT 500');
+ const getHomework=db.prepare('SELECT id,subject,title,description,due_date FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 100');
+ const getTimetable=db.prepare('SELECT weekday,period,subject,starts_at,ends_at,room FROM timetable WHERE class_name=? ORDER BY weekday,period LIMIT 100');
+ const data=children.map(student=>({student,attendance:getAttendance.all(student.id),fees:getFees.all(student.id),results:getResults.all(student.id),homework:getHomework.all(student.class_name),timetable:getTimetable.all(student.class_name)}));
+ res.json({children:data});
+});
 app.get('/api/teacher/me',auth,allow('teacher'),(req,res)=>{
  const staff=db.prepare('SELECT id,name,designation FROM staff WHERE user_id=? AND active=1').get(req.user.id);
  if(!staff)return fail(res,404,'No active teacher profile is linked to this login');
@@ -224,9 +255,34 @@ app.post('/api/timetable',auth,allow('admin'),validateBody,(req,res)=>{
 
 
 app.get('/api/dashboard',auth,(req,res)=>{
-  const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
-  const outstanding=db.prepare("SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE status!='paid'").get().amount;
-  res.json({students:count('students'),staff:count('staff'),exams:count('exams'),notices:count('notices'),outstandingFees:outstanding});
+  const role=req.user.role;
+  const publishedNotices=db.prepare('SELECT COUNT(*) n FROM notices WHERE published=1 AND audience IN (?,?)').get('all',role).n;
+  if(role==='admin'||role==='accountant'){
+    const count=table=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
+    const outstanding=db.prepare("SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE status!='paid'").get().amount;
+    return res.json({students:count('students'),staff:count('staff'),exams:count('exams'),notices:publishedNotices,outstandingFees:outstanding});
+  }
+  if(role==='teacher'){
+    const classes=teacherClassNames(req.user.id);
+    if(!classes.length)return res.json({students:0,staff:0,exams:0,notices:publishedNotices,classes:[]});
+    const marks=classes.map(()=>'?').join(',');
+    const students=db.prepare('SELECT COUNT(*) n FROM students WHERE status=\'active\' AND class_name IN ('+marks+')').get(...classes).n;
+    const exams=db.prepare('SELECT COUNT(*) n FROM exams WHERE class_name IN ('+marks+')').get(...classes).n;
+    return res.json({students,staff:1,exams,notices:publishedNotices,classes});
+  }
+  if(role==='student'){
+    const student=db.prepare("SELECT id,class_name FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+    if(!student)return res.json({students:0,staff:0,exams:0,notices:publishedNotices});
+    const exams=db.prepare('SELECT COUNT(*) n FROM exams WHERE class_name=?').get(student.class_name).n;
+    const due=db.prepare('SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE student_id=?').get(student.id).amount;
+    return res.json({students:1,staff:0,exams,notices:publishedNotices,outstandingFees:due});
+  }
+  const children=db.prepare("SELECT id,class_name FROM students WHERE guardian_user_id=? AND status='active'").all(req.user.id);
+  if(!children.length)return res.json({students:0,staff:0,exams:0,notices:publishedNotices,outstandingFees:0});
+  const classes=[...new Set(children.map(x=>x.class_name))],marks=children.map(()=>'?').join(',');
+  const exams=db.prepare('SELECT COUNT(*) n FROM exams WHERE class_name IN ('+classes.map(()=>'?').join(',')+')').get(...classes).n;
+  const due=db.prepare('SELECT COALESCE(SUM(amount-paid_amount),0) amount FROM fees WHERE student_id IN ('+marks+')').get(...children.map(x=>x.id)).amount;
+  res.json({students:children.length,staff:0,exams,notices:publishedNotices,outstandingFees:due});
 });
 app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(req,res)=>{
   const {className,status='active',q=''}=req.query;
@@ -235,17 +291,20 @@ app.get('/api/students',auth,allow('admin','teacher','accountant','guardian'),(r
   if(status!=='all'){sql+=' AND status=?';args.push(String(status));}
   if(q){sql+=' AND (name LIKE ? OR student_code LIKE ? OR roll LIKE ?)';args.push('%'+q+'%','%'+q+'%','%'+q+'%');}
   if(req.user.role==='guardian') { const guardian=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id); if(!guardian.length)return res.json({students:[]}); sql+=' AND id IN ('+guardian.map(()=>'?').join(',')+')';args.push(...guardian); }
-  res.json({students:db.prepare(sql+' ORDER BY class_name,roll LIMIT 500').all(...args)});
+  if(req.user.role==='teacher') { const classes=teacherClassNames(req.user.id); if(!classes.length)return res.json({students:[]}); sql+=' AND class_name IN ('+classes.map(()=>'?').join(',')+')';args.push(...classes); }
+  res.json({students:db.prepare(sql+' ORDER BY class_name,CAST(roll AS INTEGER),roll LIMIT 500').all(...args)});
 });
 app.post('/api/students',auth,allow('admin','teacher'),validateBody,(req,res)=>{
   const b=req.body, name=String(b.name||'').trim(), cls=String(b.class_name||'').trim(), roll=String(b.roll||'').trim();
   const email=String(b.email||'').trim().toLowerCase(), password=String(b.password||'');
   if(!name||!cls||!roll)return fail(res,400,'Student name, class and roll are required');
-  if((email||password) && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<12))return fail(res,400,'Student login needs a valid email and password of at least 12 characters');
+  if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,cls))return fail(res,403,'শুধু দায়িত্বপ্রাপ্ত ক্লাসে শিক্ষার্থী যোগ করা যাবে');
+  const loginError=validateStudentLogin(email,password);
+  if(loginError)return fail(res,400,loginError);
   try {
     const create=db.transaction(()=>{
       let userId=null;
-      if(email){const u=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'student')").run(name,email,bcrypt.hashSync(password,12));userId=u.lastInsertRowid;}
+      const u=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,'student')").run(name,email,bcrypt.hashSync(password,12));userId=u.lastInsertRowid;
       const x=db.prepare('INSERT INTO students(student_code,name,class_name,roll,guardian_name,guardian_phone,guardian_user_id,user_id) VALUES(?,?,?,?,?,?,?,?)').run(b.student_code||null,name,cls,roll,b.guardian_name||null,b.guardian_phone||null,b.guardian_user_id||null,userId);
       return db.prepare('SELECT id,student_code,name,class_name,roll,guardian_name,guardian_phone,status,user_id FROM students WHERE id=?').get(x.lastInsertRowid);
     });
@@ -260,6 +319,8 @@ app.post('/api/students/:id/deactivate',auth,allow('admin'),(req,res)=>{
 });
 app.patch('/api/students/:id',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const id=parseId(req.params.id);if(!id)return fail(res,400,'Invalid id');
+ const current=db.prepare('SELECT id,class_name FROM students WHERE id=?').get(id);if(!current)return fail(res,404,'Student not found');
+ if(req.user.role==='teacher'&&(!teacherCanAccessClass(req.user.id,current.class_name)||(req.body.class_name!==undefined&&!teacherCanAccessClass(req.user.id,req.body.class_name))))return fail(res,403,'শুধু দায়িত্বপ্রাপ্ত ক্লাসের শিক্ষার্থী সম্পাদনা করা যাবে');
  const keys=['student_code','name','class_name','roll','guardian_name','guardian_phone','status']; const updates=keys.filter(k=>req.body[k]!==undefined);
  if(!updates.length)return fail(res,400,'No editable fields supplied');
  const stmt=db.prepare('UPDATE students SET '+updates.map(k=>k+'=?').join(',')+' WHERE id=?');
@@ -288,6 +349,7 @@ app.get('/api/attendance',auth,allow('admin','teacher','guardian','student'),(re
  let sql='SELECT a.*,s.name student_name,s.class_name,s.roll FROM attendance a JOIN students s ON s.id=a.student_id WHERE attendance_date=?',args=[date];
  if(req.user.role==='student'){const st=db.prepare('SELECT id FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');sql+=' AND s.id=?';args.push(st.id);}
  if(req.user.role==='guardian'){const ids=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id);if(!ids.length)return res.json({date,attendance:[]});sql+=' AND s.id IN ('+ids.map(()=>'?').join(',')+')';args.push(...ids);}
+ if(req.user.role==='teacher'){const classes=teacherClassNames(req.user.id);if(!classes.length)return res.json({date,attendance:[]});sql+=' AND s.class_name IN ('+classes.map(()=>'?').join(',')+')';args.push(...classes);}
  res.json({date,attendance:db.prepare(sql+' ORDER BY s.class_name,s.roll').all(...args)});
 });
 app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,res)=>{
@@ -297,8 +359,23 @@ app.post('/api/attendance/bulk',auth,allow('admin','teacher'),validateBody,(req,
  try{tx();res.json({ok:true,saved:records.length});}catch(e){return fail(res,400,e.message);}
 });
 app.get('/api/homework',auth,(req,res)=>{
- if(req.user.role==='student'){const st=db.prepare('SELECT class_name FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 300').all(st.class_name)});}
- res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()});
+  if(req.user.role==='student'){
+    const st=db.prepare("SELECT class_name FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+    if(!st)return fail(res,404,'Student profile not linked');
+    return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name=? ORDER BY due_date DESC LIMIT 300').all(st.class_name)});
+  }
+  if(req.user.role==='guardian'){
+    const classes=[...new Set(db.prepare("SELECT class_name FROM students WHERE guardian_user_id=? AND status='active'").all(req.user.id).map(x=>x.class_name))];
+    if(!classes.length)return res.json({homework:[]});
+    return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name IN ('+classes.map(()=>'?').join(',')+') ORDER BY due_date DESC LIMIT 300').all(...classes)});
+  }
+  if(req.user.role==='teacher'){
+    const classes=teacherClassNames(req.user.id);
+    if(!classes.length)return res.json({homework:[]});
+    return res.json({homework:db.prepare('SELECT * FROM homework WHERE class_name IN ('+classes.map(()=>'?').join(',')+') ORDER BY due_date DESC LIMIT 300').all(...classes)});
+  }
+  if(req.user.role!=='admin')return fail(res,403,'Insufficient permission');
+  res.json({homework:db.prepare('SELECT * FROM homework ORDER BY due_date DESC LIMIT 300').all()});
 });
 app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.class_name||!b.subject||!b.title)return fail(res,400,'Class, subject and title required');
@@ -306,7 +383,24 @@ app.post('/api/homework',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const x=db.prepare('INSERT INTO homework(class_name,subject,title,description,due_date,created_by) VALUES(?,?,?,?,?,?)').run(b.class_name,b.subject,b.title,b.description||null,b.due_date||null,req.user.id);
  res.status(201).json({homework:db.prepare('SELECT * FROM homework WHERE id=?').get(x.lastInsertRowid)});
 });
-app.get('/api/exams',auth,(req,res)=>res.json({exams:db.prepare('SELECT * FROM exams ORDER BY exam_date DESC LIMIT 300').all()}));
+app.get('/api/exams',auth,(req,res)=>{
+  let sql='SELECT * FROM exams',args=[],where=[];
+  if(req.user.role==='student'){
+    const st=db.prepare("SELECT class_name FROM students WHERE user_id=? AND status='active'").get(req.user.id);
+    if(!st)return fail(res,404,'Student profile not linked');
+    where.push('class_name=?');args.push(st.class_name);
+  } else if(req.user.role==='guardian') {
+    const classes=db.prepare("SELECT DISTINCT class_name FROM students WHERE guardian_user_id=? AND status='active'").all(req.user.id).map(x=>x.class_name);
+    if(!classes.length)return res.json({exams:[]});
+    where.push('class_name IN ('+classes.map(()=>'?').join(',')+')');args.push(...classes);
+  } else if(req.user.role==='teacher') {
+    const classes=teacherClassNames(req.user.id);
+    if(!classes.length)return res.json({exams:[]});
+    where.push('class_name IN ('+classes.map(()=>'?').join(',')+')');args.push(...classes);
+  }
+  if(where.length)sql+=' WHERE '+where.join(' AND ');
+  res.json({exams:db.prepare(sql+' ORDER BY exam_date DESC LIMIT 300').all(...args)});
+ });
 app.post('/api/exams',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!b.name||!b.class_name)return fail(res,400,'Exam name and class required');
  if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,b.class_name))return fail(res,403,'এই ক্লাসটি আপনার দায়িত্বে বরাদ্দ নেই');
@@ -324,6 +418,7 @@ app.get('/api/results',auth,allow('admin','teacher','student','guardian'),(req,r
  if(req.query.exam_id){where.push('r.exam_id=?');args.push(Number(req.query.exam_id));}
  if(req.user.role==='student'){const st=db.prepare('SELECT id FROM students WHERE user_id=?').get(req.user.id);if(!st)return fail(res,404,'Student profile not linked');where.push('r.student_id=?');args.push(st.id);}
  if(req.user.role==='guardian'){const ids=db.prepare('SELECT id FROM students WHERE guardian_user_id=?').all(req.user.id).map(x=>x.id);if(!ids.length)return res.json({results:[]});where.push('r.student_id IN ('+ids.map(()=>'?').join(',')+')');args.push(...ids);}
+ if(req.user.role==='teacher'){const classes=teacherClassNames(req.user.id);if(!classes.length)return res.json({results:[]});where.push('e.class_name IN ('+classes.map(()=>'?').join(',')+')');args.push(...classes);}
  if(where.length)sql+=' WHERE '+where.join(' AND ');
  res.json({results:db.prepare(sql+' ORDER BY e.name,s.class_name,s.roll,r.subject LIMIT 2000').all(...args)});
 });
@@ -358,6 +453,7 @@ app.post('/api/fees/:id/payment',auth,allow('admin','accountant'),validateBody,(
    db.prepare('INSERT INTO fee_payments(fee_id,receipt_no,amount,method,reference,received_by) VALUES(?,?,?,?,?,?)').run(id,receiptNo,amount,method,String(req.body.reference||'').slice(0,100)||null,req.user.id);
    const paid=Number((fee.paid_amount+amount).toFixed(2)),status=paid>=fee.amount?'paid':paid>0?'partial':'unpaid';
    db.prepare('UPDATE fees SET paid_amount=?,status=? WHERE id=?').run(paid,status,id);
+   db.prepare('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,details) VALUES(?,?,?,?,?)').run(req.user.id,'fee.payment_recorded','fee',String(id),JSON.stringify({amount,method,receipt_no:receiptNo}));
  });
  tx();
  res.json({ok:true,receipt:{receipt_no:receiptNo,amount,method,created_at:new Date().toISOString()},fee:db.prepare('SELECT * FROM fees WHERE id=?').get(id)});
@@ -368,10 +464,67 @@ app.post('/api/payments/online',auth,validateBody,(req,res)=>{
  if(!['bkash','nagad'].includes(provider))return fail(res,400,'Unsupported payment provider');
  return res.status(503).json({error:'Online payment gateway is not configured yet. Please use the school office payment option for now.'});
 });
-app.get('/api/notices',auth,(req,res)=>res.json({notices:db.prepare('SELECT id,title,body,audience,published,created_at FROM notices WHERE published=1 ORDER BY created_at DESC LIMIT 300').all()}));
+// Expense ledger: restricted to administrative finance roles.
+app.get('/api/expenses',auth,allow('admin','accountant'),(req,res)=>{
+  const from=String(req.query.from||''),to=String(req.query.to||''),category=String(req.query.category||'');
+  if((from&&!isRealIsoDate(from))||(to&&!isRealIsoDate(to)))return fail(res,400,'Use valid YYYY-MM-DD dates for expense filters');
+  if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
+  const where=[],args=[];
+  if(from){where.push('expense_date>=?');args.push(from);}
+  if(to){where.push('expense_date<=?');args.push(to);}
+  if(category){where.push('category=?');args.push(category.slice(0,80));}
+  const sql='SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses'+(where.length?' WHERE '+where.join(' AND '):'')+' ORDER BY expense_date DESC,id DESC LIMIT 1000';
+  res.json({expenses:db.prepare(sql).all(...args)});
+});
+app.post('/api/expenses',auth,allow('admin','accountant'),validateBody,(req,res)=>{
+  const parsed=validateExpenseInput(req.body);
+  if(parsed.error)return fail(res,400,parsed.error);
+  const {category,description,amount,expenseDate,reference}=parsed.value;
+  const create=db.transaction(()=>{
+    const x=db.prepare('INSERT INTO expenses(category,description,amount,expense_date,reference,created_by) VALUES(?,?,?,?,?,?)').run(category,description,amount,expenseDate,reference,req.user.id);
+    db.prepare('INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id,details) VALUES(?,?,?,?,?)').run(req.user.id,'expense.created','expense',String(x.lastInsertRowid),JSON.stringify({category,amount,expense_date:expenseDate}));
+    return db.prepare('SELECT id,category,description,amount,expense_date,reference,created_by,created_at FROM expenses WHERE id=?').get(x.lastInsertRowid);
+  });
+  res.status(201).json({expense:create()});
+});
+app.get('/api/reports/accounting',auth,allow('admin','accountant'),(req,res)=>{
+  const from=String(req.query.from||''),to=String(req.query.to||'');
+  if((from&&!isRealIsoDate(from))||(to&&!isRealIsoDate(to)))return fail(res,400,'Use valid YYYY-MM-DD dates for report filters');
+  if(from&&to&&from>to)return fail(res,400,'Start date must not be after end date');
+  const invoiceWhere=[],paymentWhere=[],expenseWhere=[],invoiceArgs=[],paymentArgs=[],expenseArgs=[];
+  if(from){
+    invoiceWhere.push('created_at>=?');invoiceArgs.push(from+' 00:00:00');
+    paymentWhere.push('created_at>=?');paymentArgs.push(from+' 00:00:00');
+    expenseWhere.push('expense_date>=?');expenseArgs.push(from);
+  }
+  if(to){
+    invoiceWhere.push('date(created_at)<=?');invoiceArgs.push(to);
+    paymentWhere.push('date(created_at)<=?');paymentArgs.push(to);
+    expenseWhere.push('expense_date<=?');expenseArgs.push(to);
+  }
+  const invoiceSql='SELECT COALESCE(SUM(amount),0) billed,COALESCE(SUM(amount-paid_amount),0) outstanding FROM fees'+(invoiceWhere.length?' WHERE '+invoiceWhere.join(' AND '):'');
+  const paymentSql='SELECT COALESCE(SUM(amount),0) collected FROM fee_payments'+(paymentWhere.length?' WHERE '+paymentWhere.join(' AND '):'');
+  const expenseSql='SELECT COALESCE(SUM(amount),0) total,count(*) AS entries FROM expenses'+(expenseWhere.length?' WHERE '+expenseWhere.join(' AND '):'');
+  const invoices=db.prepare(invoiceSql).get(...invoiceArgs),payments=db.prepare(paymentSql).get(...paymentArgs),expenses=db.prepare(expenseSql).get(...expenseArgs);
+  res.json({
+    period:{from:from||null,to:to||null},
+    income:{billed:invoices.billed,collected:payments.collected,outstandingForPeriodInvoices:invoices.outstanding},
+    expenses:{total:expenses.total,entries:expenses.entries},
+    netCashFlow:Number((payments.collected-expenses.total).toFixed(2)),
+    currency:'BDT',
+    note:'Collected income is based on recorded fee_payments within the period. Legacy paid amounts without payment ledger entries are not counted as period collections.'
+  });
+});
+app.get('/api/notices',auth,(req,res)=>{
+  const audienceForRole={admin:['all','admin'],teacher:['all','teacher'],student:['all','student'],guardian:['all','guardian'],accountant:['all','accountant']};
+  const allowed=audienceForRole[req.user.role]||['all'];
+  res.json({notices:db.prepare('SELECT id,title,body,audience,published,created_at FROM notices WHERE published=1 AND audience IN ('+allowed.map(()=>'?').join(',')+') ORDER BY created_at DESC LIMIT 300').all(...allowed)});
+ });
 app.post('/api/notices',auth,allow('admin','teacher'),validateBody,(req,res)=>{
  const b=req.body;if(!String(b.title||'').trim()||!String(b.body||'').trim())return fail(res,400,'Notice title and body required');
- const x=db.prepare('INSERT INTO notices(title,body,audience,published,created_by) VALUES(?,?,?,?,?)').run(b.title,b.body,b.audience||'all',b.published===false?0:1,req.user.id);
+ const audience=String(b.audience||'all');
+ if(!['all','admin','teacher','student','guardian','accountant'].includes(audience))return fail(res,400,'Invalid notice audience');
+ const x=db.prepare('INSERT INTO notices(title,body,audience,published,created_by) VALUES(?,?,?,?,?)').run(String(b.title).trim().slice(0,200),String(b.body).trim().slice(0,10000),audience,b.published===false?0:1,req.user.id);
  res.status(201).json({notice:db.prepare('SELECT * FROM notices WHERE id=?').get(x.lastInsertRowid)});
 });
 
@@ -398,13 +551,16 @@ app.get('/api/reports/marksheet',auth,allow('admin','teacher','student','guardia
   const student=db.prepare('SELECT id,name,class_name,roll,student_code FROM students WHERE id=?').get(studentId);
   const exam=db.prepare('SELECT id,name,class_name,exam_date,academic_year FROM exams WHERE id=?').get(examId);
   if(!student||!exam)return fail(res,404,'Student or exam not found');
+  if(student.class_name!==exam.class_name)return fail(res,400,'এই পরীক্ষা ও শিক্ষার্থী একই ক্লাসের নয়');
+  if(req.user.role==='teacher'&&!teacherCanAccessClass(req.user.id,student.class_name))return fail(res,403,'এই শিক্ষার্থীর মার্কশিট দেখার অনুমতি নেই');
   const subjects=db.prepare('SELECT subject,marks,max_marks FROM results WHERE exam_id=? AND student_id=? ORDER BY subject').all(examId,studentId);
   if(!subjects.length)return res.json({student,exam,subjects:[],totalMarks:0,totalMaxMarks:0,percentage:0,gpa:0,grade:'N/A'});
   const enriched=subjects.map(s=>({...s,percentage:Number((s.marks/s.max_marks*100).toFixed(2)),...gradePoint(s.marks/s.max_marks*100)}));
   const totalMarks=subjects.reduce((n,s)=>n+s.marks,0),totalMaxMarks=subjects.reduce((n,s)=>n+s.max_marks,0);
   const percentage=Number((totalMarks/totalMaxMarks*100).toFixed(2));
-  const gpa=Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
-  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:gradePoint(percentage).letter});
+  const failed=enriched.some(s=>s.letter==='F');
+  const gpa=failed?0:Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
+  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:failed?'F':gradePoint(percentage).letter});
 });
 app.get('/api/reports/fees',auth,allow('admin','accountant'),(req,res)=>{
   const rows=db.prepare("SELECT status,COUNT(*) AS invoices,COALESCE(SUM(amount),0) AS billed,COALESCE(SUM(paid_amount),0) AS collected,COALESCE(SUM(amount-paid_amount),0) AS outstanding FROM fees GROUP BY status").all();

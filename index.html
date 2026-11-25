@@ -20,11 +20,15 @@
         <button class="nav-item active" data-view="dashboard">▦ <span>ড্যাশবোর্ড</span></button>
         <button class="nav-item" data-view="students">♙ <span>শিক্ষার্থী</span></button>
         <button class="nav-item hidden" data-view="studentPortal">▣ <span>আমার প্যানেল</span></button>
+        <button class="nav-item hidden" data-view="guardianPortal">♧ <span>অভিভাবক প্যানেল</span></button>
         <button class="nav-item hidden" data-view="teacherPortal">▤ <span>টিচার প্যানেল</span></button>
+        <button class="nav-item" data-view="notices">▤ <span>নোটিশ</span></button>
+        <button class="nav-item hidden" data-view="reports">▧ <span>মার্কশিট রিপোর্ট</span></button>
         <button class="nav-item" data-view="fees">৳ <span>বেতন ও ফি</span></button>
+        <button class="nav-item hidden" data-view="expenses">↘ <span>আয়-ব্যয়</span></button>
         <button class="nav-item" data-view="settings">⚙ <span>অ্যাডমিন সেটিংস</span></button>
       </nav>
-      <div class="sidebar-note"><strong>প্রোটোটাইপ</strong><p>ডেমো ডেটা এই ব্রাউজারেই সংরক্ষিত হয়।</p></div>
+      <div class="sidebar-note"><strong>সার্ভার সংযুক্ত</strong><p>অ্যাকাউন্ট ও অনুমতি অনুযায়ী ডেটা দেখানো হয়।</p></div>
     </aside>
     <main class="main">
       <header class="topbar"><div><p class="eyebrow">SCHOOL MANAGEMENT</p><h1 id="pageTitle">ড্যাশবোর্ড</h1></div><div class="admin-chip"><span class="avatar">A</span><span><b>Admin</b><small>Administrator</small></span></div></header>
@@ -61,9 +65,16 @@
         </div>
         <div class="panel"><h3>আমার বেতন ও ফি</h3><div class="table-wrap"><table><thead><tr><th>বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th></tr></thead><tbody id="studentFeeRows"></tbody></table></div><p class="notice">বিকাশ অনলাইন পেমেন্ট এখনো চালু হয়নি। মার্চেন্ট API ও সার্ভার-সাইড পেমেন্ট যাচাই সম্পন্ন হলে এখানে নিরাপদ পেমেন্ট বাটন যুক্ত হবে।</p></div>
         <div class="panel"><h3>আমার ফলাফল</h3><div class="table-wrap"><table><thead><tr><th>পরীক্ষা</th><th>বিষয়</th><th>নম্বর</th><th>পূর্ণমান</th></tr></thead><tbody id="studentResultRows"></tbody></table></div></div>
+        <div class="panel"><h3>পরীক্ষাভিত্তিক GPA ও মার্কশিট</h3><div class="table-wrap"><table><thead><tr><th>পরীক্ষা</th><th>মোট নম্বর</th><th>শতকরা</th><th>GPA</th><th>গ্রেড</th></tr></thead><tbody id="studentMarksheetRows"></tbody></table></div><p class="muted">নম্বর সংরক্ষিত হলে পরীক্ষাভিত্তিক ফলাফল এখানে দেখাবে।</p></div>
         <div class="panel"><h3>উপস্থিতি</h3><div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>অবস্থা</th><th>নোট</th></tr></thead><tbody id="studentAttendanceRows"></tbody></table></div></div>
         <div class="panel"><h3>হোমওয়ার্ক</h3><div id="studentHomework"></div></div>
         <div class="panel"><h3>ক্লাস রুটিন</h3><div class="table-wrap"><table><thead><tr><th>দিন</th><th>পিরিয়ড</th><th>বিষয়</th><th>সময়</th><th>রুম</th></tr></thead><tbody id="studentRoutineRows"></tbody></table></div></div>
+      </section>
+      <section id="guardianPortalView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>অভিভাবক প্যানেল</h3><p>আপনার সঙ্গে যুক্ত শিক্ষার্থীদের উপস্থিতি, ফলাফল ও ফি</p></div><button class="secondary" id="refreshGuardian" type="button">রিফ্রেশ</button></div>
+          <div id="guardianChildren"><p class="empty">তথ্য লোড হচ্ছে…</p></div>
+        </div>
       </section>
       <section id="teacherPortalView" class="view hidden">
         <div class="panel"><div class="panel-head"><div><h3>টিচার ড্যাশবোর্ড</h3><p>নিজের প্রোফাইল, দায়িত্বপ্রাপ্ত ক্লাস ও দৈনন্দিন কার্যক্রম</p></div></div><div id="teacherProfile"></div><div id="teacherClasses"></div></div>
@@ -72,6 +83,40 @@
         <div class="panel"><h3>হোমওয়ার্ক দিন</h3><form id="teacherHomeworkForm" class="form-grid"><label>বিষয়<input name="subject" required /></label><label>শিরোনাম<input name="title" required /></label><label class="full">বিস্তারিত<textarea name="description" rows="2"></textarea></label><label>জমার তারিখ<input name="due_date" type="date" /></label><div class="form-actions"><button class="primary" type="submit">হোমওয়ার্ক প্রকাশ</button></div></form></div>
         <div class="panel"><h3>পরীক্ষা ও নম্বর</h3><form id="teacherExamForm" class="form-grid"><label>পরীক্ষার নাম<input name="name" required /></label><label>পরীক্ষার তারিখ<input name="exam_date" type="date" /></label><div class="form-actions"><button class="primary" type="submit">পরীক্ষা তৈরি</button></div></form><form id="teacherMarksForm" class="form-grid"><label>পরীক্ষা<select name="exam_id" id="teacherExamSelect" required><option value="">পরীক্ষা নির্বাচন</option></select></label><label>শিক্ষার্থী<select name="student_id" id="teacherMarkStudent" required><option value="">শিক্ষার্থী নির্বাচন</option></select></label><label>বিষয়<input name="subject" required /></label><label>প্রাপ্ত নম্বর<input name="marks" type="number" min="0" step="0.01" required /></label><label>পূর্ণমান<input name="max_marks" type="number" min="1" step="0.01" value="100" required /></label><div class="form-actions"><button class="primary" type="submit">নম্বর সংরক্ষণ</button></div></form></div>
         <div class="panel"><h3>আমার ক্লাস রুটিন</h3><div class="table-wrap"><table><thead><tr><th>ক্লাস</th><th>দিন</th><th>পিরিয়ড</th><th>বিষয়</th><th>সময়</th><th>রুম</th></tr></thead><tbody id="teacherRoutineRows"></tbody></table></div></div>
+      </section>
+      <section id="reportsView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>পরীক্ষার মার্কশিট</h3><p>শিক্ষার্থী ও পরীক্ষা নির্বাচন করে নম্বর, গ্রেড ও GPA দেখুন</p></div></div>
+          <form id="reportForm" class="form-grid">
+            <label>পরীক্ষা<select id="reportExam" name="exam_id" required><option value="">পরীক্ষা নির্বাচন</option></select></label>
+            <label>শিক্ষার্থী<select id="reportStudent" name="student_id" required><option value="">শিক্ষার্থী নির্বাচন</option></select></label>
+            <div class="form-actions"><button class="primary" type="submit">মার্কশিট দেখুন</button></div>
+          </form>
+        </div>
+        <div class="panel hidden" id="reportResultPanel">
+          <h3 id="reportHeading">মার্কশিট</h3>
+          <div class="stats">
+            <article class="stat-card"><p>মোট নম্বর</p><strong id="reportTotal">—</strong></article>
+            <article class="stat-card"><p>শতকরা</p><strong id="reportPercentage">—</strong></article>
+            <article class="stat-card"><p>GPA / গ্রেড</p><strong id="reportGpa">—</strong></article>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>বিষয়</th><th>প্রাপ্ত নম্বর</th><th>পূর্ণমান</th><th>শতকরা</th><th>গ্রেড</th><th>গ্রেড পয়েন্ট</th></tr></thead><tbody id="reportSubjectRows"></tbody></table></div>
+        </div>
+      </section>
+      <section id="noticesView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>স্কুল নোটিশ</h3><p>আপনার ভূমিকার জন্য প্রকাশিত নোটিশ</p></div><button class="secondary" id="refreshNotices" type="button">রিফ্রেশ</button></div>
+          <div id="noticeList" class="notice-list"><p class="empty">নোটিশ লোড করা হয়নি।</p></div>
+        </div>
+        <div class="panel" id="noticeCreatePanel">
+          <h3>নতুন নোটিশ প্রকাশ</h3>
+          <form id="noticeForm" class="form-grid">
+            <label>নোটিশের শিরোনাম<input name="title" required maxlength="200" /></label>
+            <label>কার জন্য<select name="audience"><option value="all">সবার জন্য</option><option value="admin">অ্যাডমিন</option><option value="teacher">শিক্ষক</option><option value="student">শিক্ষার্থী</option><option value="guardian">অভিভাবক</option><option value="accountant">হিসাবরক্ষক</option></select></label>
+            <label class="full">বিস্তারিত<textarea name="body" rows="4" required maxlength="10000"></textarea></label>
+            <div class="form-actions"><button class="primary" type="submit">নোটিশ প্রকাশ</button></div>
+          </form>
+        </div>
       </section>
       <section id="feesView" class="view hidden">
         <div class="panel">
@@ -97,6 +142,32 @@
           <p class="notice">বিকাশ/নগদের সরাসরি অনলাইন পেমেন্ট চালু করতে মার্চেন্ট API ও নিরাপদ callback যাচাই যুক্ত করতে হবে। আপাতত এখানে অফিসে পাওয়া পেমেন্টের হিসাব ও রসিদ সংরক্ষণ করা যাবে।</p>
         </div>
       </section>
+      <section id="expensesView" class="view hidden">
+        <div class="panel">
+          <div class="panel-head"><div><h3>স্কুলের খরচ যোগ করুন</h3><p>অফিস খরচ, বিদ্যুৎ, বেতন ও অন্যান্য ব্যয় রেকর্ড করুন</p></div><span class="pill">BDT ৳</span></div>
+          <form id="expenseForm" class="form-grid">
+            <label>খরচের ধরন<input name="category" required maxlength="80" placeholder="যেমন: বিদ্যুৎ বিল" /></label>
+            <label>টাকার পরিমাণ (৳)<input name="amount" type="number" min="0.01" step="0.01" required /></label>
+            <label class="full">বিবরণ<input name="description" required maxlength="500" placeholder="খরচের বিস্তারিত" /></label>
+            <label>খরচের তারিখ<input name="expense_date" type="date" required /></label>
+            <label>রেফারেন্স/ভাউচার নম্বর<input name="reference" maxlength="100" placeholder="ঐচ্ছিক" /></label>
+            <div class="form-actions"><button class="primary" type="submit">খরচ সংরক্ষণ করুন</button></div>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>আয়-ব্যয়ের সারাংশ</h3><p>নির্বাচিত সময়ের রেকর্ডকৃত লেনদেন</p></div><button class="secondary" id="refreshExpenses">রিফ্রেশ</button></div>
+          <div class="stats">
+            <article class="stat-card"><p>ধার্য ফি</p><strong id="accountingBilled">৳0</strong></article>
+            <article class="stat-card"><p>রেকর্ডকৃত আদায়</p><strong id="accountingCollected">৳0</strong></article>
+            <article class="stat-card"><p>মোট খরচ</p><strong id="accountingExpenses">৳0</strong></article>
+          </div>
+          <p class="notice" id="accountingNet">নিট নগদ প্রবাহ: ৳0। পুরোনো পেমেন্ট লেজারে না থাকলে তা আদায়ের হিসাবে ধরা হবে না।</p>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>খরচের তালিকা</h3><p>সর্বশেষ ১০০০টি খরচের রেকর্ড</p></div></div>
+          <div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>বিবরণ</th><th>পরিমাণ</th><th>রেফারেন্স</th></tr></thead><tbody id="expenseRows"></tbody></table><p id="emptyExpenses" class="empty">এখনও কোনো খরচ যোগ করা হয়নি।</p></div>
+        </div>
+      </section>
       <section id="settingsView" class="view hidden">
         <div class="panel"><div class="panel-head"><div><h3>স্কুল প্রোফাইল ও সেটিংস</h3><p>এই তথ্যগুলো পরে যেকোনো সময় পরিবর্তন করতে পারবেন</p></div><span class="pill">Admin</span></div>
           <form id="settingsForm" class="form-grid settings-grid">
@@ -108,7 +179,7 @@
             <label>বর্তমান শিক্ষাবর্ষ<input name="academicYear" required type="number" min="2000" max="2100" /></label>
             <div class="form-actions"><button type="reset" class="secondary">রিসেট ফর্ম</button><button type="submit" class="primary">সেটিংস সংরক্ষণ</button></div>
           </form>
-          <p class="notice">নোট: এই ডেমোতে সেটিংস আপনার বর্তমান ব্রাউজারে থাকে। বহু ব্যবহারকারীর জন্য চালু করতে ব্যাকএন্ড ও ডেটাবেস যুক্ত করতে হবে।</p>
+          <p class="notice">স্কুলের সেটিংস সার্ভারে সংরক্ষিত হয়। বাস্তব শিক্ষার্থীর তথ্য ব্যবহারের আগে ব্যাকআপ, স্থায়ী ডেটাবেস এবং নিরাপত্তা যাচাই সম্পন্ন করুন।</p>
         </div>
 
         <div class="panel">
@@ -144,7 +215,7 @@
           <p id="gatewayStatus" class="notice">এখানে Merchant তথ্য নিরাপদভাবে সংরক্ষণ করা যাবে। তবে অফিসিয়াল API checkout ও payment callback যাচাই যুক্ত না হওয়া পর্যন্ত শিক্ষার্থীদের কাছ থেকে অনলাইন পেমেন্ট নেওয়া হবে না।</p>
         </div>
       </section>
-      <footer>School Management System · Starter Prototype</footer>
+      <footer>School Management System · Role-based web portal</footer>
     </main>
   </div>
   <div id="toast" role="status" class="toast hidden"></div>

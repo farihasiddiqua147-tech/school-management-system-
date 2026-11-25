@@ -55,9 +55,9 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
   $(view + 'View').classList.remove('hidden');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
-  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',fees:'বেতন ও ফি',settings:'অ্যাডমিন সেটিংস'})[view];
+  $('pageTitle').textContent = ({dashboard:'ড্যাশবোর্ড',students:'শিক্ষার্থী',studentPortal:'আমার প্যানেল',teacherPortal:'টিচার প্যানেল',guardianPortal:'অভিভাবক প্যানেল',fees:'বেতন ও ফি',expenses:'আয়-ব্যয়',notices:'নোটিশ',reports:'মার্কশিট রিপোর্ট',settings:'অ্যাডমিন সেটিংস'})[view];
 }
-document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); }));
+document.querySelectorAll('[data-view]').forEach(btn => btn.addEventListener('click', () => { showView(btn.dataset.view); if (btn.dataset.view === 'fees') loadFees(); if (btn.dataset.view === 'expenses') loadExpenses(); if (btn.dataset.view === 'guardianPortal') loadGuardianPortal(); if (btn.dataset.view === 'notices') loadNotices(); if (btn.dataset.view === 'reports') loadReportOptions(); }));
 document.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.go)));
 const logout = document.createElement('button');
 logout.className = 'secondary'; logout.textContent = 'লগআউট'; logout.style.marginLeft = '12px';
@@ -66,14 +66,83 @@ document.querySelector('.topbar').appendChild(logout);
 const adminOnly = user.role === 'admin';
 const studentOnly = user.role === 'student';
 const teacherOnly = user.role === 'teacher';
+const guardianOnly = user.role === 'guardian';
 document.querySelectorAll('[data-view="studentPortal"]').forEach(el=>el.classList.toggle('hidden',!studentOnly));
 document.querySelectorAll('[data-view="teacherPortal"]').forEach(el=>el.classList.toggle('hidden',!teacherOnly));
-document.querySelectorAll('[data-view="students"]').forEach(el=>el.classList.toggle('hidden',studentOnly));
-document.querySelectorAll('[data-view="dashboard"]').forEach(el=>el.classList.toggle('hidden',studentOnly||teacherOnly));
+document.querySelectorAll('[data-view="guardianPortal"]').forEach(el=>el.classList.toggle('hidden',!guardianOnly));
+document.querySelectorAll('[data-view="reports"]').forEach(el=>el.classList.toggle('hidden',!['admin','teacher'].includes(user.role)));
+document.querySelectorAll('[data-view="students"]').forEach(el=>el.classList.toggle('hidden',studentOnly||guardianOnly));
+document.querySelectorAll('[data-view="dashboard"]').forEach(el=>el.classList.toggle('hidden',studentOnly||teacherOnly||guardianOnly));
 document.querySelectorAll('[data-view="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 const financeRole = ['admin','accountant'].includes(user.role);
+const studentManagementRole = ['admin','teacher'].includes(user.role);
+$('showStudentForm').classList.toggle('hidden', !studentManagementRole);
+document.querySelectorAll('.quick-card[data-go="students"]').forEach(el => el.classList.toggle('hidden', !studentManagementRole));
+document.querySelectorAll('.quick-card[data-go="settings"]').forEach(el => el.classList.toggle('hidden', !adminOnly));
 document.querySelectorAll('[data-view="fees"]').forEach(el => el.classList.toggle('hidden', !financeRole));
+document.querySelectorAll('[data-view="expenses"]').forEach(el => el.classList.toggle('hidden', !financeRole));
+if (!financeRole) $('expensesView').classList.add('hidden');
 if (!financeRole) $('feesView').classList.add('hidden');
+
+const noticeCreatePanel = $('noticeCreatePanel');
+const canPublishNotices = ['admin','teacher'].includes(user.role);
+noticeCreatePanel.classList.toggle('hidden', !canPublishNotices);
+async function loadNotices() {
+  const list=$('noticeList');
+  list.replaceChildren();
+  try {
+    const data=await api('/api/notices');
+    const notices=data.notices||[];
+    if(!notices.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='এখনো কোনো নোটিশ নেই।';list.appendChild(empty);return;}
+    notices.forEach(n=>{
+      const card=document.createElement('article');card.className='panel';
+      const heading=document.createElement('h3');heading.textContent=n.title;
+      const body=document.createElement('p');body.textContent=n.body;
+      const meta=document.createElement('small');meta.className='muted';meta.textContent=(n.audience==='all'?'সবার জন্য':n.audience)+' · '+(n.created_at||'');
+      card.append(heading,body,meta);list.appendChild(card);
+    });
+  } catch(error) { const message=document.createElement('p');message.className='empty';message.textContent=error.message;list.appendChild(message); }
+}
+$('refreshNotices').addEventListener('click',loadNotices);
+$('noticeForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!canPublishNotices)return;
+  const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+  try { await api('/api/notices',{method:'POST',body:JSON.stringify(data)});e.currentTarget.reset();toast('নোটিশ প্রকাশ হয়েছে');await loadNotices(); }
+  catch(error){toast(error.message);}
+});
+
+async function loadReportOptions() {
+  const examSelect=$('reportExam'), studentSelect=$('reportStudent');
+  examSelect.replaceChildren();studentSelect.replaceChildren();
+  const addOption=(select,value,label)=>{const o=document.createElement('option');o.value=value;o.textContent=label;select.appendChild(o);};
+  addOption(examSelect,'','পরীক্ষা নির্বাচন');addOption(studentSelect,'','শিক্ষার্থী নির্বাচন');
+  try {
+    const [examData,studentData]=await Promise.all([api('/api/exams'),api('/api/students?status=all')]);
+    (examData.exams||[]).forEach(exam=>addOption(examSelect,exam.id,exam.name+' · '+exam.class_name+' · '+(exam.exam_date||'তারিখ নেই')));
+    (studentData.students||[]).forEach(st=>addOption(studentSelect,st.id,st.name+' · '+st.class_name+' · রোল '+st.roll));
+  } catch(error){toast(error.message);}
+}
+$('reportForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const examId=$('reportExam').value,studentId=$('reportStudent').value;
+  if(!examId||!studentId){toast('পরীক্ষা ও শিক্ষার্থী নির্বাচন করুন');return;}
+  try {
+    const m=await api('/api/reports/marksheet?exam_id='+encodeURIComponent(examId)+'&student_id='+encodeURIComponent(studentId));
+    $('reportResultPanel').classList.remove('hidden');
+    $('reportHeading').textContent=m.student.name+' · '+m.exam.name+' · '+m.student.class_name+' · রোল '+m.student.roll;
+    $('reportTotal').textContent=Number(m.totalMarks||0)+' / '+Number(m.totalMaxMarks||0);
+    $('reportPercentage').textContent=Number(m.percentage||0)+'%';
+    $('reportGpa').textContent=Number(m.gpa||0).toFixed(2)+' / '+(m.grade||'—');
+    const body=$('reportSubjectRows');body.replaceChildren();
+    (m.subjects||[]).forEach(s=>{
+      const tr=document.createElement('tr');
+      [s.subject,s.marks,s.max_marks,Number(s.percentage||0)+'%',s.letter,Number(s.point||0).toFixed(2)].forEach(v=>{const td=document.createElement('td');td.textContent=String(v??'—');tr.appendChild(td);});
+      body.appendChild(tr);
+    });
+    if(!(m.subjects||[]).length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=6;td.textContent='এই পরীক্ষার কোনো নম্বর পাওয়া যায়নি।';tr.appendChild(td);body.appendChild(tr);}
+  } catch(error){toast(error.message);}
+});
 
 const gatewayForm = $('gatewayForm');
 let gatewayConfigs = {};
@@ -190,6 +259,44 @@ $('feeForm').addEventListener('submit',async e=>{
   catch(error){toast(error.message);}
 });
 $('refreshFees').addEventListener('click',loadFees);
+
+function renderExpenses(rows) {
+  const body=$('expenseRows');body.replaceChildren();
+  $('emptyExpenses').classList.toggle('hidden',rows.length>0);
+  rows.forEach(expense=>{
+    const tr=document.createElement('tr');
+    [expense.expense_date,expense.category,expense.description,money(expense.amount),expense.reference||'—'].forEach(value=>{
+      const td=document.createElement('td');td.textContent=String(value??'—');tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+}
+async function loadExpenses() {
+  if(!financeRole)return;
+  try {
+    const [expenseData,report]=await Promise.all([api('/api/expenses'),api('/api/reports/accounting')]);
+    renderExpenses(expenseData.expenses||[]);
+    $('accountingBilled').textContent=money(report.income?.billed||0);
+    $('accountingCollected').textContent=money(report.income?.collected||0);
+    $('accountingExpenses').textContent=money(report.expenses?.total||0);
+    $('accountingNet').textContent='নিট নগদ প্রবাহ: '+money(report.netCashFlow||0)+'. আদায়ের হিসাব শুধু fee payment ledger-এ রেকর্ড থাকা পেমেন্ট থেকে করা হয়েছে।';
+  } catch(error){toast(error.message);}
+}
+$('expenseForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!financeRole)return;
+  const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+  data.amount=Number(data.amount);
+  try {
+    await api('/api/expenses',{method:'POST',body:JSON.stringify(data)});
+    e.currentTarget.reset();
+    $('expenseForm').elements.expense_date.value=new Date().toISOString().slice(0,10);
+    toast('খরচ সংরক্ষণ হয়েছে');
+    await loadExpenses();
+  } catch(error){toast(error.message);}
+});
+$('refreshExpenses').addEventListener('click',loadExpenses);
+$('expenseForm').elements.expense_date.value=new Date().toISOString().slice(0,10);
 $('studentForm').addEventListener('submit', async e => {
   e.preventDefault();
   const data = new FormData(e.currentTarget);
@@ -214,10 +321,57 @@ async function loadStudentPortal() {
   const feeTable=$('studentFeeRows');feeTable.innerHTML='';
   (data.fees||[]).forEach(f=>{const tr=document.createElement('tr');[f.description,money(f.amount),money(f.paid_amount),money(Number(f.amount)-Number(f.paid_amount)),f.status==='paid'?'পরিশোধিত':f.status==='partial'?'আংশিক':'বকেয়া'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});feeTable.appendChild(tr);});
   const results=$('studentResultRows');results.innerHTML='';(data.results||[]).forEach(r=>{const tr=document.createElement('tr');[r.exam_name,r.subject,r.marks,r.max_marks].forEach(v=>{const td=document.createElement('td');td.textContent=v??'—';tr.appendChild(td);});results.appendChild(tr);});
+  const marksheetRows=$('studentMarksheetRows');marksheetRows.replaceChildren();
+  const examIds=[...new Set((data.results||[]).map(r=>Number(r.exam_id)).filter(Number.isInteger))];
+  const marksheets=await Promise.all(examIds.map(async examId=>{
+    try{return await api('/api/reports/marksheet?exam_id='+encodeURIComponent(examId)+'&student_id='+encodeURIComponent(st.id));}
+    catch(error){return {error:error.message,exam:{name:'পরীক্ষা '+examId}};}
+  }));
+  marksheets.forEach(m=>{
+    const tr=document.createElement('tr');
+    const values=m.error?[m.exam?.name||'—','—','—','—',m.error]:[m.exam?.name||'—',Number(m.totalMarks||0)+' / '+Number(m.totalMaxMarks||0),Number(m.percentage||0)+'% ',Number(m.gpa||0).toFixed(2),m.grade||'—'];
+    values.forEach(v=>{const td=document.createElement('td');td.textContent=String(v);tr.appendChild(td);});
+    marksheetRows.appendChild(tr);
+  });
+  if(!marksheets.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=5;td.textContent='এখনো কোনো মার্কশিট তৈরি হয়নি।';tr.appendChild(td);marksheetRows.appendChild(tr);}
   const attendanceTable=$('studentAttendanceRows');attendanceTable.innerHTML='';(data.attendance||[]).forEach(r=>{const tr=document.createElement('tr');[r.attendance_date,r.status,r.note||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});attendanceTable.appendChild(tr);});
   $('studentHomework').textContent=(data.homework||[]).map(h=>h.title+' · '+h.subject+' · '+(h.due_date||'তারিখ নেই')).join(' | ')||'এখনো কোনো হোমওয়ার্ক নেই';
   const routine=$('studentRoutineRows');routine.innerHTML='';(data.timetable||[]).forEach(r=>{const tr=document.createElement('tr');[r.weekday,r.period,r.subject,[r.starts_at,r.ends_at].filter(Boolean).join('–')||'—',r.room||'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});routine.appendChild(tr);});
 }
+async function loadGuardianPortal() {
+  const container=$('guardianChildren');container.replaceChildren();
+  try {
+    const data=await api('/api/guardian/me');
+    const children=data.children||[];
+    if(!children.length){const p=document.createElement('p');p.className='empty';p.textContent='আপনার অ্যাকাউন্টের সঙ্গে কোনো সক্রিয় শিক্ষার্থীর প্রোফাইল যুক্ত নেই। স্কুলের অ্যাডমিনের সঙ্গে যোগাযোগ করুন।';container.appendChild(p);return;}
+    children.forEach(item=>{
+      const st=item.student,card=document.createElement('article');card.className='panel';
+      const heading=document.createElement('h3');heading.textContent=st.name+' · '+st.class_name+' · রোল '+st.roll;
+      const meta=document.createElement('p');meta.className='muted';meta.textContent='শিক্ষার্থী আইডি: '+(st.student_code||st.id);
+      const attendance=item.attendance||[],fees=item.fees||[],results=item.results||[];
+      const due=fees.reduce((sum,f)=>sum+Math.max(0,Number(f.amount)-Number(f.paid_amount)),0);
+      const summary=document.createElement('p');summary.textContent='উপস্থিতির রেকর্ড: '+attendance.length+' · মোট বকেয়া: '+money(due);
+      card.append(heading,meta,summary);
+      const addTable=(title,headers,rows)=>{
+        const h=document.createElement('h4');h.textContent=title;card.appendChild(h);
+        const wrap=document.createElement('div');wrap.className='table-wrap';const table=document.createElement('table'),thead=document.createElement('thead'),trh=document.createElement('tr');
+        headers.forEach(v=>{const th=document.createElement('th');th.textContent=v;trh.appendChild(th);});thead.appendChild(trh);table.appendChild(thead);
+        const tbody=document.createElement('tbody');
+        rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(v=>{const td=document.createElement('td');td.textContent=String(v??'—');tr.appendChild(td);});tbody.appendChild(tr);});
+        if(!rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=headers.length;td.textContent='কোনো তথ্য নেই';tr.appendChild(td);tbody.appendChild(tr);}
+        table.appendChild(tbody);wrap.appendChild(table);card.appendChild(wrap);
+      };
+      addTable('ফি ও বকেয়া',['বিবরণ','ধার্য','জমা','বাকি','অবস্থা'],fees.map(f=>[f.description,money(f.amount),money(f.paid_amount),money(Number(f.amount)-Number(f.paid_amount),),f.status]));
+      addTable('উপস্থিতি',['তারিখ','অবস্থা','নোট'],attendance.map(a=>[a.attendance_date,a.status,a.note||'—']));
+      addTable('পরীক্ষার ফলাফল',['পরীক্ষা','বিষয়','নম্বর','পূর্ণমান'],results.map(r=>[r.exam_name,r.subject,r.marks,r.max_marks]));
+      addTable('ক্লাস রুটিন',['দিন','পিরিয়ড','বিষয়','সময়','রুম'],(item.timetable||[]).map(t=>[t.weekday,t.period,t.subject,[t.starts_at,t.ends_at].filter(Boolean).join('–')||'—',t.room||'—']));
+      const homework=document.createElement('p');homework.textContent='হোমওয়ার্ক: '+((item.homework||[]).map(h=>h.title+' ('+h.subject+')').join(' · ')||'কোনো হোমওয়ার্ক নেই');card.appendChild(homework);
+      container.appendChild(card);
+    });
+  } catch(error){const p=document.createElement('p');p.className='empty';p.textContent=error.message;container.appendChild(p);}
+}
+$('refreshGuardian').addEventListener('click',loadGuardianPortal);
+
 async function loadTeacherPortal() {
   const data=await api('/api/teacher/me');
   $('teacherProfile').textContent=data.teacher.name+' · '+data.teacher.designation;
@@ -267,6 +421,7 @@ async function init() {
     renderSettings();
     if (studentOnly) { document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden')); $('studentPortalView').classList.remove('hidden'); $('pageTitle').textContent='আমার প্যানেল'; await loadStudentPortal(); return; }
     if (teacherOnly) { document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden')); $('teacherPortalView').classList.remove('hidden'); $('pageTitle').textContent='টিচার প্যানেল'; await loadTeacherPortal(); await refreshStudents(); return; }
+    if (guardianOnly) { document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden')); $('guardianPortalView').classList.remove('hidden'); $('pageTitle').textContent='অভিভাবক প্যানেল'; await loadGuardianPortal(); return; }
     await refreshStudents();
     if (!adminOnly) $('settingsView').classList.add('hidden');
     if (financeRole) await loadFees();
