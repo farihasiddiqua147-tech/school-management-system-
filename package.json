@@ -9,7 +9,8 @@
     "dev": "node --watch server/index.js",
     "test": "node --test",
     "db:backup": "node scripts/backup-sqlite.js",
-    "db:restore": "node scripts/restore-sqlite.js"
+    "db:restore": "node scripts/restore-sqlite.js",
+    "postinstall": "npm rebuild better-sqlite3"
   },
   "engines": {
     "node": "20.x"
