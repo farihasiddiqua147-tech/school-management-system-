@@ -10,6 +10,10 @@
 
 The current API imports `better-sqlite3` and performs synchronous database calls throughout `server/index.js` (`prepare`, `get`, `all`, `run`, `transaction`, and SQLite-specific SQL such as `PRAGMA`, `ON CONFLICT`, and `AUTOINCREMENT`). PostgreSQL drivers such as `pg` are asynchronous and use different SQL/dialect semantics. Setting `DATABASE_URL` or swapping a package therefore does **not** create a working PostgreSQL runtime adapter. Do not point production at PostgreSQL until the API's database access is refactored and tested against it.
 
+## SQLite backup utility
+
+Run `npm run db:backup` on a host with access to the SQLite database. It writes a timestamped copy under `./backups` (or `BACKUP_DIR`), checks database integrity and foreign-key constraints before copying, and verifies the resulting backup. Set `DATABASE_FILE` to the active database path. Keep the backup directory private, encrypted at rest, access-restricted, and outside the public web root; arrange off-host copies separately. This utility does not replace a tested restore procedure. Practice restoring a copy to a separate path before relying on backups for recovery.
+
 ## Required PostgreSQL migration sequence
 
 1. Introduce a repository/service layer for database operations and remove direct SQLite calls from route handlers.
