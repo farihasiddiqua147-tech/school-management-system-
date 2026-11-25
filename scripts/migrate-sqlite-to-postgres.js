@@ -51,7 +51,7 @@ async function main() {
     const summary = [];
     for (const table of TABLES) {
       const columns = sqlite.prepare('PRAGMA table_info("' + table + '")').all().map(c => c.name);
-      const pgColumns = await pg.query('SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2', ['public', table]);
+      const pgColumns = await pg.query('SELECT column_name, data_type FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2', ['public', table]);
       const pgColumnTypes = new Map(pgColumns.rows.map(c => [c.column_name, c.data_type]));
       const available = new Set(pgColumnTypes.keys());
       const missing = columns.filter(c => !available.has(c));
