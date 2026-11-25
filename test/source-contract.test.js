@@ -47,3 +47,16 @@ test('SQLite backup utility checks source and backup integrity', () => {
   assert.match(read('scripts/restore-sqlite.js'), /Target already exists; restore will not overwrite any file/);
   assert.match(read('package.json'), /"db:restore": "node scripts\/restore-sqlite\.js"/);
 });
+
+
+test('accounting receipt and ledger endpoints are role restricted and parameterized', () => {
+  const server = read('server/index.js');
+  assert.match(server, /app\.get\('\/api\/fees\/:id\/receipt\/:receiptNo',auth,allow\('admin','accountant'\)/);
+  assert.match(server, /app\.get\('\/api\/reports\/fee-ledger',auth,allow\('admin','accountant'\)/);
+  assert.match(server, /from must not be later than to/);
+});
+
+test('marksheet GPA is zero when any subject is failed', () => {
+  const server = read('server/index.js');
+  assert.match(server, /enriched\.some\(s=>s\.point===0\)\?0/);
+});
