@@ -7,6 +7,15 @@ const path = require('node:path');
 const Database = require('better-sqlite3');
 const { Client } = require('pg');
 
+function normalizeSqliteValue(value, pgType) {
+  if (value === undefined) return null;
+  if (value === '') {
+    const type = String(pgType || '').toLowerCase();
+    if (type === 'date' || type.includes('timestamp')) return null;
+  }
+  return value;
+}
+
 const TABLES = [
   'users', 'settings', 'students', 'staff', 'attendance', 'homework', 'exams',
   'fees', 'results', 'fee_payments', 'payment_gateway_settings', 'notices',
@@ -43,7 +52,8 @@ async function main() {
     for (const table of TABLES) {
       const columns = sqlite.prepare('PRAGMA table_info("' + table + '")').all().map(c => c.name);
       const pgColumns = await pg.query('SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name=$2', ['public', table]);
-      const available = new Set(pgColumns.rows.map(c => c.column_name));
+      const pgColumnTypes = new Map(pgColumns.rows.map(c => [c.column_name, c.data_type]));
+      const available = new Set(pgColumnTypes.keys());
       const missing = columns.filter(c => !available.has(c));
       if (missing.length) throw new Error('Schema mismatch for ' + table + '; PostgreSQL is missing columns: ' + missing.join(', '));
       const rows = sqlite.prepare('SELECT * FROM "' + table + '"').all();
@@ -51,8 +61,10 @@ async function main() {
         const quoted = columns.map(c => '"' + c.replace(/"/g, '""') + '"').join(', ');
         const params = '(' + columns.map((_, i) => '$' + (i + 1)).join(', ') + ')';
         const sql = 'INSERT INTO "' + table + '" (' + quoted + ') VALUES ' + params;
-        for (const row of rows) await pg.query(sql, columns.map(c => row[c] === undefined ? null : row[c]));
+        for (const row of rows) await pg.query(sql, columns.map(c => normalizeSqliteValue(row[c], pgColumnTypes.get(c))));
       }
+      const copied = await pg.query('SELECT COUNT(*)::bigint AS count FROM "' + table + '"');
+      if (Number(copied.rows[0].count) !== rows.length) throw new Error('Row count verification failed for ' + table);
       summary.push({ table, rows: rows.length });
     }
     for (const table of TABLES) {
@@ -74,4 +86,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(error => { console.error('Migration stopped safely:', error.message); process.exitCode = 1; });
-module.exports = { TABLES, main };
+module.exports = { TABLES, main, normalizeSqliteValue };
