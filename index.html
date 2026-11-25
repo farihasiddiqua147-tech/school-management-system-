@@ -96,6 +96,22 @@
           <div class="table-wrap"><table><thead><tr><th>শিক্ষার্থী</th><th>ফি-এর বিবরণ</th><th>ধার্য</th><th>জমা</th><th>বাকি</th><th>অবস্থা</th><th>কাজ</th></tr></thead><tbody id="feeRows"></tbody></table><p id="emptyFees" class="empty">এখনও কোনো ফি যোগ করা হয়নি।</p></div>
           <p class="notice">বিকাশ/নগদের সরাসরি অনলাইন পেমেন্ট চালু করতে মার্চেন্ট API ও নিরাপদ callback যাচাই যুক্ত করতে হবে। আপাতত এখানে অফিসে পাওয়া পেমেন্টের হিসাব ও রসিদ সংরক্ষণ করা যাবে।</p>
         </div>
+        <div class="panel">
+          <div class="panel-head"><div><h3>হিসাবের লেজার</h3><p>নির্দিষ্ট সময় বা শিক্ষার্থী অনুযায়ী জমা পেমেন্ট ও রসিদ দেখুন</p></div><button class="secondary" id="refreshLedger" type="button">রিফ্রেশ</button></div>
+          <form id="ledgerFilter" class="form-grid">
+            <label>শুরুর তারিখ<input id="ledgerFrom" name="from" type="date" /></label>
+            <label>শেষ তারিখ<input id="ledgerTo" name="to" type="date" /></label>
+            <label>শিক্ষার্থী<select id="ledgerStudent" name="student_id"><option value="">সব শিক্ষার্থী</option></select></label>
+            <div class="form-actions"><button class="primary" type="submit">হিসাব দেখুন</button></div>
+          </form>
+          <div class="stats fee-stats">
+            <article class="stat-card"><p>মোট পেমেন্ট</p><strong id="ledgerPaymentCount">0</strong></article>
+            <article class="stat-card"><p>মোট আদায়</p><strong id="ledgerCollected">৳0</strong></article>
+            <article class="stat-card"><p>মাধ্যমভিত্তিক হিসাব</p><strong id="ledgerMethods">—</strong></article>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>তারিখ</th><th>রসিদ নম্বর</th><th>শিক্ষার্থী</th><th>ফি</th><th>মাধ্যম</th><th>টাকা</th><th>রসিদ</th></tr></thead><tbody id="ledgerRows"></tbody></table><p id="emptyLedger" class="empty">কোনো পেমেন্ট রেকর্ড পাওয়া যায়নি।</p></div>
+        </div>
+        </div>
       </section>
       <section id="settingsView" class="view hidden">
         <div class="panel"><div class="panel-head"><div><h3>স্কুল প্রোফাইল ও সেটিংস</h3><p>এই তথ্যগুলো পরে যেকোনো সময় পরিবর্তন করতে পারবেন</p></div><span class="pill">Admin</span></div>
