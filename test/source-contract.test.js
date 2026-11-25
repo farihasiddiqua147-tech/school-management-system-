@@ -1,0 +1,38 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
+const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+
+test('runtime is pinned to Node 20 for the native SQLite dependency', () => {
+  assert.match(read('.node-version').trim(), /^20\./);
+  assert.match(read('package.json'), /"node":\s*"20\.x"/);
+});
+
+test('API enforces a sufficiently long JWT secret before starting', () => {
+  const server = read('server/index.js');
+  assert.match(server, /!JWT_SECRET\s*\|\|\s*JWT_SECRET\.length\s*<\s*32/);
+});
+
+test('sensitive administrative routes require authentication and role checks', () => {
+  const server = read('server/index.js');
+  assert.match(server, /app\.post\('\/api\/users',auth,allow\('admin'\)/);
+  assert.match(server, /app\.put\('\/api\/settings',auth,allow\('admin'\)/);
+  assert.match(server, /app\.post\('\/api\/fees',auth,allow\('admin','accountant'\)/);
+});
+
+test('student and guardian marksheet requests are scoped to linked records', () => {
+  const server = read('server/index.js');
+  assert.match(server, /WHERE id=\? AND user_id=\?/);
+  assert.match(server, /WHERE id=\? AND guardian_user_id=\?/);
+  assert.match(server, /You may only view your own marksheet/);
+  assert.match(server, /You may only view your linked student marksheet/);
+});
+
+test('online payment endpoint fails closed until gateway integration is complete', () => {
+  const server = read('server/index.js');
+  assert.match(server, /app\.post\('\/api\/payments\/online'/);
+  assert.match(server, /status\(503\)\.json\(\{error:'Online payment gateway is not configured yet/);
+});
