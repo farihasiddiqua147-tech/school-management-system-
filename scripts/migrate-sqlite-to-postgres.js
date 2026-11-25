@@ -22,7 +22,7 @@ async function main() {
     throw new Error('Set CONFIRM_SCHOOL_DB_MIGRATION=YES only after stopping app writes and taking a verified backup.');
   }
   const sqlite = new Database(sourceFile, { readonly: true, fileMustExist: true });
-  const pg = new Client({ connectionString: databaseUrl, ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false } });
+  const pg = new Client({ connectionString: databaseUrl });
   let inTransaction = false;
   try {
     const integrity = sqlite.pragma('integrity_check');
