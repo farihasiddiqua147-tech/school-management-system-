@@ -403,13 +403,54 @@ app.get('/api/reports/marksheet',auth,allow('admin','teacher','student','guardia
   const enriched=subjects.map(s=>({...s,percentage:Number((s.marks/s.max_marks*100).toFixed(2)),...gradePoint(s.marks/s.max_marks*100)}));
   const totalMarks=subjects.reduce((n,s)=>n+s.marks,0),totalMaxMarks=subjects.reduce((n,s)=>n+s.max_marks,0);
   const percentage=Number((totalMarks/totalMaxMarks*100).toFixed(2));
-  const gpa=Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
-  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:gradePoint(percentage).letter});
+  // Under the configured Bangladesh-style scale, any failed subject makes the overall GPA zero.
+  const gpa=enriched.some(s=>s.point===0)?0:Number((enriched.reduce((n,s)=>n+s.point,0)/enriched.length).toFixed(2));
+  res.json({student,exam,subjects:enriched,totalMarks,totalMaxMarks,percentage,gpa,grade:gpa===0&&enriched.some(s=>s.point===0)?'F':gradePoint(percentage).letter});
 });
 app.get('/api/reports/fees',auth,allow('admin','accountant'),(req,res)=>{
   const rows=db.prepare("SELECT status,COUNT(*) AS invoices,COALESCE(SUM(amount),0) AS billed,COALESCE(SUM(paid_amount),0) AS collected,COALESCE(SUM(amount-paid_amount),0) AS outstanding FROM fees GROUP BY status").all();
   const total=db.prepare('SELECT COUNT(*) AS invoices,COALESCE(SUM(amount),0) AS billed,COALESCE(SUM(paid_amount),0) AS collected,COALESCE(SUM(amount-paid_amount),0) AS outstanding FROM fees').get();
   res.json({total,byStatus:rows});
+});
+
+// Auditable receipt lookup and a payment ledger for the accounting workflow.
+app.get('/api/fees/:id/receipt/:receiptNo',auth,allow('admin','accountant'),(req,res)=>{
+  const id=parseId(req.params.id);
+  const receiptNo=String(req.params.receiptNo||'').trim();
+  if(!id||!receiptNo||receiptNo.length>80)return fail(res,400,'Valid fee id and receipt number required');
+  const receipt=db.prepare(`SELECT p.id,p.receipt_no,p.amount,p.method,p.reference,p.created_at,
+    f.id AS fee_id,f.description,f.fee_type,f.billing_period,f.amount AS fee_amount,
+    s.id AS student_id,s.student_code,s.name AS student_name,s.class_name,s.roll,
+    u.name AS received_by_name
+    FROM fee_payments p JOIN fees f ON f.id=p.fee_id
+    JOIN students s ON s.id=f.student_id LEFT JOIN users u ON u.id=p.received_by
+    WHERE p.fee_id=? AND p.receipt_no=?`).get(id,receiptNo);
+  if(!receipt)return fail(res,404,'Receipt not found');
+  res.json({receipt});
+});
+app.get('/api/reports/fee-ledger',auth,allow('admin','accountant'),(req,res)=>{
+  const from=String(req.query.from||'').trim(),to=String(req.query.to||'').trim(),studentId=req.query.student_id?parseId(req.query.student_id):null;
+  const validDate=value=>!value||/^\\d{4}-\\d{2}-\\d{2}$/.test(value);
+  if(!validDate(from)||!validDate(to)|| (req.query.student_id&&!studentId))return fail(res,400,'Use valid from/to dates (YYYY-MM-DD) and student_id');
+  if(from&&to&&from>to)return fail(res,400,'from must not be later than to');
+  const where=[],args=[];
+  if(from){where.push('date(p.created_at)>=date(?)');args.push(from);}
+  if(to){where.push('date(p.created_at)<=date(?)');args.push(to);}
+  if(studentId){where.push('s.id=?');args.push(studentId);}
+  const clause=where.length?' WHERE '+where.join(' AND '):'';
+  const payments=db.prepare(`SELECT p.id,p.receipt_no,p.amount,p.method,p.reference,p.created_at,
+    f.id AS fee_id,f.description,f.fee_type,f.billing_period,
+    s.id AS student_id,s.student_code,s.name AS student_name,s.class_name,s.roll,
+    u.name AS received_by_name
+    FROM fee_payments p JOIN fees f ON f.id=p.fee_id
+    JOIN students s ON s.id=f.student_id LEFT JOIN users u ON u.id=p.received_by${clause}
+    ORDER BY p.created_at DESC,p.id DESC LIMIT 2000`).all(...args);
+  const total=db.prepare(`SELECT COUNT(*) AS payment_count,COALESCE(SUM(p.amount),0) AS collected
+    FROM fee_payments p JOIN fees f ON f.id=p.fee_id JOIN students s ON s.id=f.student_id${clause}`).get(...args);
+  const byMethod=db.prepare(`SELECT p.method,COUNT(*) AS payment_count,COALESCE(SUM(p.amount),0) AS collected
+    FROM fee_payments p JOIN fees f ON f.id=p.fee_id JOIN students s ON s.id=f.student_id${clause}
+    GROUP BY p.method ORDER BY p.method`).all(...args);
+  res.json({filters:{from:from||null,to:to||null,studentId},total,byMethod,payments});
 });
 
 // Serve the frontend from the same origin as the API so login works without CORS setup.
