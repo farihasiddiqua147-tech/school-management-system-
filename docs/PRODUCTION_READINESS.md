@@ -5,7 +5,7 @@
 - Pin Node.js 20.19.0 in `.node-version` and run automated tests in GitHub Actions.
 - Use `npm run db:backup` to make a timestamped SQLite backup. It validates database integrity and foreign-key constraints before copying and verifies the backup after copying.
 - Set `DATABASE_FILE` to the active SQLite database path and optionally `BACKUP_DIR` to a private backup directory. Keep backups outside the public web root, restrict access, encrypt at rest, and arrange off-host copies separately.
-- The backup command is not a restore procedure. Before relying on backups, restore one to a separate test path and verify the app and key records.
+- Use `npm run db:restore -- <backup.sqlite> <new-target.sqlite>` to restore a backup into a new, separate database file. It refuses to overwrite an existing target and checks integrity/foreign-key constraints. It does not switch the live application database automatically. Practice on a separate path and verify key records before any planned cutover.
 
 ## Important database architecture finding
 
