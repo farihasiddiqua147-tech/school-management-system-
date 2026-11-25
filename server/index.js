@@ -430,7 +430,7 @@ app.get('/api/fees/:id/receipt/:receiptNo',auth,allow('admin','accountant'),(req
 });
 app.get('/api/reports/fee-ledger',auth,allow('admin','accountant'),(req,res)=>{
   const from=String(req.query.from||'').trim(),to=String(req.query.to||'').trim(),studentId=req.query.student_id?parseId(req.query.student_id):null;
-  const validDate=value=>!value||/^\\d{4}-\\d{2}-\\d{2}$/.test(value);
+  const validDate=value=>!value||/^\d{4}-\d{2}-\d{2}$/.test(value);
   if(!validDate(from)||!validDate(to)|| (req.query.student_id&&!studentId))return fail(res,400,'Use valid from/to dates (YYYY-MM-DD) and student_id');
   if(from&&to&&from>to)return fail(res,400,'from must not be later than to');
   const where=[],args=[];
