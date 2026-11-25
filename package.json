@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "db:backup": "node scripts/backup-sqlite.js",
+    "db:restore": "node scripts/restore-sqlite.js"
   },
   "engines": {
     "node": "20.x"

@@ -36,3 +36,14 @@ test('online payment endpoint fails closed until gateway integration is complete
   assert.match(server, /app\.post\('\/api\/payments\/online'/);
   assert.match(server, /status\(503\)\.json\(\{error:'Online payment gateway is not configured yet/);
 });
+
+test('SQLite backup utility checks source and backup integrity', () => {
+  const backup = read('scripts/backup-sqlite.js');
+  assert.match(backup, /integrity_check/);
+  assert.match(backup, /foreign_key_check/);
+  assert.match(backup, /await source\.backup\(backupPath\)/);
+  assert.match(backup, /Backup verified/);
+  assert.match(read('package.json'), /"db:backup": "node scripts\/backup-sqlite\.js"/);
+  assert.match(read('scripts/restore-sqlite.js'), /Target already exists; restore will not overwrite any file/);
+  assert.match(read('package.json'), /"db:restore": "node scripts\/restore-sqlite\.js"/);
+});
