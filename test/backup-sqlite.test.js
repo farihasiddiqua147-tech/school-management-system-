@@ -43,4 +43,26 @@ test('backup command creates and verifies a real SQLite backup', async t => {
   } finally {
     backup.close();
   }
+
+  const restoredPath = path.join(temp, 'restored.sqlite');
+  const restoreScript = path.resolve(__dirname, '..', 'scripts', 'restore-sqlite.js');
+  const restore = spawnSync(process.execPath, [restoreScript, path.join(backupDir, files[0]), restoredPath], {
+    encoding: 'utf8',
+    env: process.env
+  });
+  assert.equal(restore.status, 0, restore.stderr);
+  assert.match(restore.stdout, /Restore copy verified:/);
+  const restored = new Database(restoredPath, { readonly: true, fileMustExist: true });
+  try {
+    assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM students').get().n, 1);
+    assert.equal(restored.pragma('integrity_check', { simple: true }), 'ok');
+  } finally {
+    restored.close();
+  }
+
+  const overwriteAttempt = spawnSync(process.execPath, [restoreScript, path.join(backupDir, files[0]), restoredPath], {
+    encoding: 'utf8'
+  });
+  assert.notEqual(overwriteAttempt.status, 0);
+  assert.match(overwriteAttempt.stderr, /Target already exists/);
 });
