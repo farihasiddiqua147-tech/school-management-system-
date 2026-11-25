@@ -1,10 +1,11 @@
 # Production readiness and remaining implementation
 
-## Completed in this change
+## Operational improvements in this repository
 
-- Pin Node.js 20.19.0 in `.node-version`. `better-sqlite3` is a native module, so use a supported Node 20 runtime instead of an untested newer major version.
-- Add GitHub Actions CI to install dependencies and run `npm test` on Node 20 for pushes and pull requests.
-- Record the database migration boundary and production rollout requirements below to avoid treating an unverified database switch as complete.
+- Pin Node.js 20.19.0 in `.node-version` and run automated tests in GitHub Actions.
+- Use `npm run db:backup` to make a timestamped SQLite backup. It validates database integrity and foreign-key constraints before copying and verifies the backup after copying.
+- Set `DATABASE_FILE` to the active SQLite database path and optionally `BACKUP_DIR` to a private backup directory. Keep backups outside the public web root, restrict access, encrypt at rest, and arrange off-host copies separately.
+- The backup command is not a restore procedure. Before relying on backups, restore one to a separate test path and verify the app and key records.
 
 ## Important database architecture finding
 
@@ -27,11 +28,11 @@ The current API imports `better-sqlite3` and performs synchronous database calls
 - [ ] Use persistent storage for SQLite or complete and verify the PostgreSQL adapter before selecting PostgreSQL.
 - [ ] Verify `/api/health` and a real login after deployment without exposing credentials in logs.
 - [ ] Complete API authorization tests for all five roles and test student/guardian data isolation.
-- [ ] Add automated database backups and perform a restore rehearsal.
+- [ ] Perform a restore rehearsal and schedule protected off-host backups.
 - [ ] Add audit logging, input validation, error monitoring, and rate limits appropriate to the deployed traffic.
 - [ ] Integrate SMS, email, and bKash/Nagad only with provider credentials, verified callbacks/signatures, idempotency, and sandbox-to-production testing.
 - [ ] Finish frontend-to-API integration and end-to-end tests on both mobile and desktop layouts.
 
 ## Feature status
 
-The existing backend includes starter routes for accounts, students, staff, attendance, homework, exams/results, fees/payments, notices, school settings, and basic marksheet/fee reports. This does not mean the full user interface, complete role workflows, financial ledger, configurable grading rules, live payment gateway, SMS/email delivery, or production-grade audit/backup system is complete. Treat those as outstanding until implemented and tested.
+The existing backend includes starter routes for accounts, students, staff, attendance, homework, exams/results, fees/payments, notices, school settings, and basic marksheet/fee reports. The full user interface, complete role workflows, financial ledger, configurable grading rules, live payment gateway, SMS/email delivery, PostgreSQL runtime, tested restore workflow, and production deployment are not complete. Treat them as outstanding until implemented and tested.
